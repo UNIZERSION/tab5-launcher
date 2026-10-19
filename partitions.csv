@@ -1,0 +1,17 @@
+# Tab5 Launcher, 16 MB flash, "Default" scheme: one 8 MB app slot (big apps such as Aurora or
+# UIFlow2 fit without visiting PMAN; 2 Apps / 4 Apps are schemes in PMAN).
+# Every scheme keeps Aurora Player's PIN store aurora_cfg at 0xF10000 (24 KB, data/nvs,
+# ../aurora-player/main/screen_lock_storage.cpp LOCK_ADDRESS / LOCK_SIZE):
+#   0x210000..0xF10000  13312 KB  app slots + FAT (vfs ends at or before 0xF10000)
+#   0xF10000..0xF16000     24 KB  aurora_cfg
+#   0xF16000..0xFF0000    872 KB  SPIFFS (the whole gap)
+# The launcher itself is the factory app: an erased otadata boots it.
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xE000,   0x2000,
+launcher,   app,  factory,  0x10000,  0x200000,
+app0,       app,  ota_0,    0x210000, 0x800000,
+vfs,        data, fat,      0xA10000, 0x500000,
+aurora_cfg, data, nvs,      0xF10000, 0x6000,
+spiffs,     data, spiffs,   0xF16000, 0xDA000,
+coredump,   data, coredump, 0xFF0000, 0x10000,

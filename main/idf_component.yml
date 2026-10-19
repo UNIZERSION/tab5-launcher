@@ -1,0 +1,12 @@
+dependencies:
+  idf: "==5.5.2"
+  # Same versions as ../aurora-player, which runs on this Tab5
+  espressif/m5stack_tab5: "==1.3.2"
+  espressif/esp_lvgl_port: "==2.8.0"
+  lvgl/lvgl: "==9.3.0"
+  # Wi-Fi through the on-board ESP32-C6 over SDIO. ESP-Hosted wants host and slave from the same
+  # release. This Tab5 (ESP32-P4 v1.3, ST7123 panel) has ESP-Hosted slave 2.12.6 on its C6, as the
+  # C6 itself reports; early units shipped 1.4.1 (M5Tab5-UserDemo wifi_c6_fw), see README "Wi-Fi".
+  espressif/esp_hosted: "==2.12.6"
+  # esp_hosted >= 2.11 needs esp_wifi_remote >= 1.3.1; 1.5.1 is from the same weeks as 2.12.6
+  espressif/esp_wifi_remote: "==1.5.1"

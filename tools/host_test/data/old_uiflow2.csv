@@ -1,0 +1,7 @@
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xE000,   0x2000,
+launcher, app,  factory,  0x10000,  0x200000,
+app0,     app,  ota_0,    0x210000, 0x700000,
+spiffs,   data, spiffs,   0x910000, 0x70000,
+vfs,      data, fat,      0x980000, 0x670000,
+coredump, data, coredump, 0xFF0000, 0x10000,
