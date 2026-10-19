@@ -1,5 +1,9 @@
 # Tab5 Launcher — user guide
 
+![HOME with one installed app](images/home.png)
+
+*Screens rendered on a PC from the launcher's own UI code.*
+
 ## What Tab5 Launcher is
 
 Tab5 Launcher is an app launcher for the M5Stack Tab5: it keeps apps (firmware) in flash and lets you choose which one to run. It is modeled on M5Launcher (bmorcelli/Launcher 2.10), but has its own touch interface for the 1280 × 720 screen.
@@ -99,6 +103,8 @@ HOME shows the "APPS IN FLASH" panel with the apps installed in flash. What it l
 
 **Several slots** (2 Apps, 4 Apps, Custom)
 
+![HOME with two app slots](images/home-two-slots.png)
+
 - A card for each slot: image, name, version, source and install date, and slot usage. An empty slot has an "Empty slot" card.
 - **Tapping a card** selects the app that will start after the boot screen. The selected one has a **BOOTS** badge.
 - The **BOOT button** in the footer starts the selected app right away.
@@ -107,6 +113,8 @@ HOME shows the "APPS IN FLASH" panel with the apps installed in flash. What it l
 ## SD: card manager
 
 The SD tab browses the card and installs `.bin` apps from it into a slot.
+
+![SD file manager with a .bin file selected](images/sd.png)
 
 **Browsing**
 
@@ -173,6 +181,8 @@ OTA installs apps from the same Tab5 firmware catalog as M5Launcher (launcherhub
 
 PMAN shows how the flash (16 MB) is divided and lets you change that layout. Changing the slots erases the installed apps, but the confirmation dialog always lists by name what will be erased. The `.bin` files on the card stay, so the apps are easy to install again.
 
+![PMAN partition manager](images/pman.png)
+
 **View**
 
 - At the top: "PARTITIONS · 16 MB FLASH" and a button with the name of the current scheme, which opens the list of schemes. "UNMANAGED" means a table laid out differently from what the launcher requires: PMAN shows it but does not change it.
@@ -223,6 +233,8 @@ Aurora Player keeps its PIN in it (24 KB at address 0xF10000). Every scheme leav
 ## CFG: settings
 
 CFG has three columns: DISPLAY, INSTALL & STORAGE and SYSTEM. Changes take effect right away and are saved to the `/config.conf` file on the SD card. Without a card, they last until a restart ("No SD card: changes last until restart").
+
+![CFG settings](images/cfg.png)
 
 **DISPLAY**
 
