@@ -54,7 +54,7 @@ python -m esptool --chip esp32p4 -p COM4 write_flash 0x0 tab5-launcher-merged.bi
 python -m esptool --chip esp32p4 -p COM4 write_flash 0 tab5-backup-16MB.bin
 ```
 
-**New launcher version:** the merged file restores the default partition scheme and erases the NVS storage, that is, the saved Wi-Fi networks and the descriptions of the installed apps. If you use a different scheme, you will have to install the apps again afterwards. To keep everything, flash only `tab5_launcher.bin` from the release (`write_flash 0x10000 tab5_launcher.bin`), unless the release notes say the bootloader has changed. The settings on the SD card (`config.conf`) and the Aurora PIN are kept in both cases.
+**New launcher version:** the merged file restores the default partition scheme and erases the NVS storage, that is, the saved Wi-Fi networks and the descriptions of the installed apps. If you use a different scheme, you will have to install the apps again afterwards. To keep everything, flash only `tab5-launcher-update-0x10000.bin` from the release (`write_flash 0x10000 tab5-launcher-update-0x10000.bin`; named `tab5_launcher.bin` before 2026-10-20), unless the release notes say the bootloader has changed. This update file is not bootable on its own: never write it at 0x0, and do not use it with M5Burner, which writes one file from 0x0; use the merged file there. The settings on the SD card (`config.conf`) and the Aurora PIN are kept in both cases.
 
 If you build from source (ESP-IDF 5.5.2), flash the launcher with `idf.py -p COM4 flash` in the project directory.
 
