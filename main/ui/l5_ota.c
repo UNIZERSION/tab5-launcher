@@ -348,6 +348,12 @@ static int parse_detail(const char *json, ver_t *vers, char *name, char *author,
         const cJSON *date = cJSON_GetObjectItemCaseSensitive(it, "published_at");
         if (n == MAX_VERS || !cJSON_IsString(ver) || !cJSON_IsString(file)) continue;
         ver_t x = {0};
+        /* cut short, it would name a version the catalog does not have (?fid=X&version=V): left out instead */
+        if (strlen(ver->valuestring) >= sizeof(x.version) || strlen(file->valuestring) >= sizeof(x.file)) {
+            ESP_LOGW(TAG, "version \"%.60s\" (file %.40s) left out: the name is longer than the launcher keeps",
+                     ver->valuestring, file->valuestring);
+            continue;
+        }
         strlcpy(x.version, ver->valuestring, sizeof(x.version));
         strlcpy(x.file, file->valuestring, sizeof(x.file));
         strlcpy(x.date, cJSON_IsString(date) ? date->valuestring : "", sizeof(x.date));
@@ -544,7 +550,16 @@ static esp_err_t download_to_sd(job_t *j, const char *url, const char *name, int
     l5_net_stream_t *s = NULL;
     l5_net_err_t ne = {0};
     int64_t length = -1, t0 = esp_timer_get_time(), t_sd = 0;
+    /* with ESP-Hosted up, internal RAM may have no 16 KB block left: then PSRAM, cache-line aligned so the SD driver
+       can take it (slower, but the file arrives) */
+    ESP_LOGI(TAG, "to SD starts: internal RAM %u bytes free, largest block %u",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     uint8_t *buf = heap_caps_malloc(16 * 1024, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    if (!buf) {
+        ESP_LOGW(TAG, "to SD: no 16 KB block of internal RAM, the buffer is in PSRAM");
+        buf = heap_caps_aligned_alloc(64, 16 * 1024, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA);
+    }
     FILE *f = buf ? fopen(part, "wb") : NULL;
     esp_err_t err = !buf ? ESP_ERR_NO_MEM : !f ? ESP_FAIL : l5_net_open(url, 0, 0, &j->cancel, &s, &length, NULL, &ne);
     if (err != ESP_OK) {
@@ -580,8 +595,10 @@ static esp_err_t download_to_sd(job_t *j, const char *url, const char *name, int
     }
     heap_caps_free(buf);
     int64_t ms = (esp_timer_get_time() - t0) / 1000;
-    ESP_LOGI(TAG, "to SD %s: %llu bytes in %lld ms (%llu KB/s), SD writes %lld ms", path, (unsigned long long)got, ms,
-             ms > 0 ? (unsigned long long)(got * 1000 / 1024 / ms) : 0ULL, t_sd / 1000);
+    ESP_LOGI(TAG, "to SD %s: %llu bytes in %lld ms (%llu KB/s), SD writes %lld ms; internal RAM %u bytes free, largest block %u",
+             path, (unsigned long long)got, ms, ms > 0 ? (unsigned long long)(got * 1000 / 1024 / ms) : 0ULL, t_sd / 1000,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     if (err == ESP_OK) {
         unlink(path);
         if (rename(part, path) != 0) {
@@ -1009,6 +1026,12 @@ static void wifi_cb(lv_event_t *e)
     l5_wifi_pick();
 }
 
+static void why_cb(lv_event_t *e)
+{
+    (void)e;
+    l5_wifi_why();
+}
+
 /* ---------- main pane ---------- */
 
 static lv_obj_t *bar(lv_obj_t *m)
@@ -1358,7 +1381,11 @@ static void no_wifi(lv_obj_t *m, lv_obj_t *s, const l5_wifi_status_t *st)
     char t[96];
     l5w_empty(box, st->state == L5_WIFI_CONNECTING || st->state == L5_WIFI_STARTING ? "Connecting\xE2\x80\xA6" : "No Wi-Fi connection",
               l5_wifi_summary(t, sizeof(t)));
-    if (st->state != L5_WIFI_CONNECTING && st->state != L5_WIFI_STARTING && st->state != L5_WIFI_FAILED) {
+    if (st->state == L5_WIFI_FAILED) { /* e.g. a C6 with the factory ESP-Hosted 1.4.1: what to flash */
+        lv_obj_t *c = l5_act_button(box, L5_ICON_WARN, "WHY NO WI-FI", false);
+        lv_obj_set_size(c, 260, 56);
+        lv_obj_add_event_cb(c, why_cb, LV_EVENT_CLICKED, NULL);
+    } else if (st->state != L5_WIFI_CONNECTING && st->state != L5_WIFI_STARTING) {
         lv_obj_t *c = l5_act_button(box, L5_ICON_WIFI, "CONNECT", true);
         lv_obj_set_size(c, 260, 56);
         lv_obj_add_event_cb(c, wifi_cb, LV_EVENT_CLICKED, NULL);

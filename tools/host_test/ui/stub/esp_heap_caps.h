@@ -6,3 +6,6 @@
 #define heap_caps_malloc(s, c) malloc(s)
 #define heap_caps_calloc(n, s, c) calloc(n, s)
 #define heap_caps_free(p) free(p)
+#define heap_caps_get_free_size(c) (300u * 1024)
+#define heap_caps_get_largest_free_block(c) (100u * 1024)
+#define heap_caps_aligned_alloc(a, s, c) malloc(s)

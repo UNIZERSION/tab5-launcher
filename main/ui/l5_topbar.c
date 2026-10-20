@@ -1,5 +1,5 @@
 /* .topbar (y 0..72, 58 before 19.10.2026), launcher.css: one machined rail with the logo, a recessed track with
-   the six tab keys (47 px high) and the status (Wi-Fi, clock, battery, power; 52 px buttons), a dark seam along
+   the five tab keys (47 px high; six with WUI until 20.10.2026) and the status (Wi-Fi, clock, battery, power; 52 px buttons), a dark seam along
    the bottom whose lit part sits under the active key. Rectangles and two-stop gradients only: no triangles, no
    masks. A tab switch redraws the two keys, the dividers next to them and the lit seam. The keys and the two
    buttons take taps a little outside their edges (tab_hit_cb, ext click area). */
@@ -14,8 +14,7 @@
 static const struct {
     const char *icon, *text;
 } TABS[L5_VIEW_COUNT] = {
-    {L5_ICON_HOME, "HOME"}, {L5_ICON_SD, "SD"},     {L5_ICON_OTA, "OTA"},
-    {L5_ICON_WEB, "WUI"},   {L5_ICON_PMAN, "PMAN"}, {L5_ICON_CFG, "CFG"},
+    {L5_ICON_HOME, "HOME"}, {L5_ICON_SD, "SD"}, {L5_ICON_OTA, "OTA"}, {L5_ICON_PMAN, "PMAN"}, {L5_ICON_CFG, "CFG"},
 };
 
 static lv_obj_t *s_tab[L5_VIEW_COUNT], *s_div[L5_VIEW_COUNT], *s_glow, *s_logo_accent;

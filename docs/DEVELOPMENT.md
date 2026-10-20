@@ -40,6 +40,41 @@ battery did not charge in the launcher ("What already works" → charger). WUI i
 > onto a device that does not have it yet, read the "Flashing" section: the bootloader
 > and the partition table change.
 
+## Restored build of 2026-10-20
+
+The sources of the launcher flashed on the Tab5 on 2026-10-20 (built 12:33:16, 1,914,912 B = 0x1D3820, app
+ELF SHA-256 476e0a80…) were lost with the laptop they were on: GitHub only had v0.1.0 (built 2026-10-18 21:18:03,
+0x1CFB30) and two commits that change `docs/GUIDE.md`. The changes below were rebuilt on 2026-10-21 from that binary,
+read back from the Tab5 (`esptool read-flash`, the whole 16 MB, MD5-checked against the chip): every string that is
+in the Tab5 build and not in v0.1.0 (and the other way round), placed in its source file by the strings next to it in
+`.rodata`. The register map of the keyboard comes from M5Stack's own sources (named in `main/l5_kbd.h`). Logic that the
+strings do not show was written new, so the code is not the lost code, and none of it has run on the device yet.
+
+- **WUI tab and USB Mass Storage row removed** (both only said "not ported yet"): five tabs, menus "OTA, SD, CFG, PMan,
+  APP, OFF", texts "Install it from SD or OTA".
+- **M5Stack Tab5 Keyboard** (`main/l5_kbd.c`, new): own I2C bus on GPIO 0 / 1 (any free port; the BSP has port
+  `CONFIG_BSP_I2C_NUM` = 1), address 0x6D, firmware byte at 0xFE, mode register 0x10 set to HID (1) and read back, events
+  from 0x30 (HID modifier + usage ID). A worker looks for the keyboard once a second and polls it every 25 ms while it is
+  there; "keyboard gone" after 3 failed reads. At a restart it gets its old mode back and the bus is deleted
+  (`i2c_del_master_bus`). The `i2c.master` log tag is turned off: probing an empty port fails every second. In the
+  on-screen keyboard (`l5_keyboard.c`) the keys are hidden while it is plugged in: "KEYBOARD · ENTER = OK · ESC = CANCEL ·
+  TAP THE FIELD FOR ON-SCREEN KEYS".
+- **config.conf put back** (`l5_config_replace()`, `l5_sd_ops.c`): RENAME or PASTE onto `/config.conf` while the
+  launcher's own file is there asks "Replace config.conf?"; the old file steps aside as `config.conf.old` for the swap, the
+  settings apply at once (`l5_cfg_reload_now()`), a file that is not a JSON object leaves them as they are.
+- **Wi-Fi with another ESP-Hosted on the C6:** `c6_mismatch` in the Wi-Fi status, the dialog "ESP32-C6 needs ESP-Hosted
+  2.12" (what the C6 runs, what to flash with M5Burner), WHY NO WI-FI in the OTA tab, the HOME empty-slot line about
+  both install sources.
+- **Display start** (`l5_display.c`, `l5_board.c`): every step has a name (`STEP()`); the board is recognised before
+  `bsp_display_new()`, which stops at `assert()` on a board it does not know (a panic boots the app in otadata). Unknown
+  board or a failed step: "NO DISPLAY: <step>" in the log, the backlight blinks, RESET tries again.
+- **Boot choice:** without a choice in NVS, only apps the launcher installed (registry entry) become the boot app;
+  HOME and the boot screen say "NO APP CHOSEN TO START" for the others, BOOT on the one-slot card chooses it.
+- **Install with little internal RAM** (`l5_inst.c`): without a 32 KB block the data goes through PSRAM and the flash
+  through an internal bounce buffer (16 KB down to 512 B), else 32-byte steps (`esp_flash_write`); internal RAM is
+  logged at the start and the end. TO SD takes a PSRAM buffer when there is no 16 KB block.
+- **OTA:** a version or file name longer than the launcher keeps is left out with a warning instead of being cut.
+
 ## Why ESP-IDF and not PlatformIO
 
 - **ESP-IDF 5.5.2 is already installed** (`..\setup\install-esp-idf.ps1`), and Aurora Player, built with it, runs
@@ -1207,6 +1242,7 @@ the default settings at once (the scheme stays), and a new file is created on th
 | `tools/patch_lvgl_rle.py` | copy of `lv_font_fmt_txt.c` from LVGL 9.3 with per-call RLE state (the "Fonts" section) |
 | `main/l5_board.c` | display start, backlight, SD, RTC RX8130, INA226 battery (voltage, pack current and state: charging / battery / USB not charging), charger (CHG_EN), power-off, ESP32-C6 power |
 | `main/l5_pi4io.h` | registers of the second expander (PI4IOE5V6408 0x44) and the charger enable steps, shared by the firmware and the PC test |
+| `main/l5_kbd.c` | M5Stack Tab5 Keyboard on the side port (not in the prototype, which has `keydown`): own I2C bus, HID events into the on-screen keyboard |
 | `main/l5_wifi.c` | `R.wifi`, `S.savedWifi`, Wi-Fi in `L5.start`: ESP32-C6 over ESP-Hosted, scan, connecting, saved networks in NVS |
 | `main/l5_display.c` | panel + touch, LVGL → PPA → hidden DPI buffer, whole-frame publishing (from `..\aurora-player\components\tab5_hal\tab5_display.c`) |
 | `main/ui/l5_theme.c` | `:root` tokens and classes from launcher.css (`.plate`, `.dark`, `.act`, `.slot`, `.chamfer`…) |
@@ -1222,7 +1258,7 @@ the default settings at once (the scheme stays), and a new file is created on th
 | `main/l5_ptable.c` | `L5.table`, `L5.applyScheme` (writes the table at 0x8000), partition format / backup / restore, SANITY CHECK of a .bin file |
 | `main/ui/l5_pman.c` | `L5.views.pman` + `pmAction`, `L5.pickScheme` |
 | `main/ui/l5_cfg.c` | `L5.views.cfg` + `cfgAction` |
-| `main/ui/l5_views.c` | tab switching, WUI placeholder |
+| `main/ui/l5_views.c` | tab switching |
 | `bootloader_components/main` | "launcher after reset" logic; `l5_guard.h`: boot-loop guard, shared with the launcher and the test (not in the prototype) |
 | `tools/gen_fonts.py`, `tools/fonts/*.ttf` | fonts from `index.html` (Google Fonts) |
 

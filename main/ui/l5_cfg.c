@@ -207,6 +207,19 @@ static void erase_ns(const char *ns)
     }
 }
 
+esp_err_t l5_cfg_reload_now(void)
+{
+    l5_config_t cfg;
+    esp_err_t err = l5_config_load(&cfg);
+    if (err != ESP_OK) return err; /* not a JSON object: g_cfg stays */
+    strlcpy(cfg.scheme, g_cfg.scheme, sizeof(cfg.scheme)); /* the scheme describes flash, not the file */
+    g_cfg = cfg;
+    apply_look();
+    l5_cfg_paint();
+    l5_ui_render();
+    return ESP_OK;
+}
+
 void l5_cfg_defaults_now(void)
 {
     char scheme[sizeof(g_cfg.scheme)];
@@ -249,7 +262,7 @@ static void about(void)
     char body[560];
     snprintf(body, sizeof(body),
              "Native LVGL launcher for M5Stack Tab5 (ESP32-P4, 1280\xC3\x97" "720). Menus follow the open-source "
-             "Launcher by bmorcelli (formerly M5Stick-Launcher): OTA, SD, WUI, CFG, PMan, APP, OFF.\n\n"
+             "Launcher by bmorcelli (formerly M5Stick-Launcher): OTA, SD, CFG, PMan, APP, OFF.\n\n"
              "Launcher %s \xC2\xB7 ESP-IDF %s \xC2\xB7 LVGL %d.%d.%d\nESP32-P4 rev v%d.%d \xC2\xB7 %u MB PSRAM \xC2\xB7 "
              "MAC %02X:%02X:%02X:%02X:%02X:%02X\nESP32-C6 Wi-Fi: ESP-Hosted %s (launcher: host %s)",
              app->version, app->idf_ver, LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH, chip.revision / 100,
@@ -298,11 +311,6 @@ static void action(const char *k)
         } else {
             l5_pman_restore(label);
         }
-        return;
-    } else if (!strcmp(k, "usb")) {
-        l5_info("USB", "USB Mass Storage: not ported yet",
-                "The prototype exposes the SD card to a computer over USB-C. On Tab5 this needs TinyUSB MSC on the "
-                "USB-OTG port with the card unmounted from the launcher.");
         return;
     } else if (!strcmp(k, "wifi")) {
         l5_wifi_menu();
@@ -556,7 +564,6 @@ void l5_cfg_render(lv_obj_t *view)
     chev(crow(s, "clearfat", "Clear FAT partition", "Erase the vfs partition", true));
     chev(crow(s, "savesp", "Save SPIFFS", "Copy SPIFFS to /backups on the SD card", false));
     chev(crow(s, "restsp", "Restore SPIFFS", "Write a saved copy back", false));
-    chev(crow(s, "usb", "USB Mass Storage", "Expose the SD card over USB-C (not ported yet)", false));
 
     lv_obj_t *y = column(view, 2, "SYSTEM");
     W.wifi = toggle(crow(y, "wifiAuto", "Wi-Fi auto-connect", "Connect to saved networks at boot", false));

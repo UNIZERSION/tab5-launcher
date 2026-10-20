@@ -23,7 +23,8 @@ The launcher runs on any M5Stack Tab5, but Wi-Fi needs the right firmware versio
 |---|---|---|
 | Device | M5Stack Tab5 (ESP32-P4, 16 MB flash) | Tested on ESP32-P4 v1.3 with the ST7121 display and ST712x touch controller ("board version 3"). The older version with the ILI9881C display and GT911 touch controller is supported by the same board driver. |
 | SD card | FAT32 or exFAT, long file names | The launcher never formats the card. A card without a file system shows "NOT READABLE": format it on a computer. |
-| Wi-Fi | ESP32-C6 with ESP-Hosted 2.12.x firmware | The first Tab5 units shipped with 1.4.1. In that case Wi-Fi will not start (the message "ESP32-C6 not available", showing both versions), but the rest of the launcher works. |
+| Wi-Fi | ESP32-C6 with ESP-Hosted 2.12.x firmware | The first Tab5 units shipped with 1.4.1. In that case Wi-Fi will not start (the message "ESP32-C6 needs ESP-Hosted 2.12", with the version the C6 runs and what to flash with M5Burner; also under WHY NO WI-FI in the OTA tab), but the rest of the launcher works. |
+| Keyboard (optional) | M5Stack Tab5 Keyboard (A164) on the side port Ext.Port1 | It types into the launcher's text fields (see "On-screen keyboard"). It can be plugged in and pulled out while the launcher runs. |
 | Apps | `.bin` images for the ESP32-P4 | Apps made only for older Tab5 hardware may not start on newer hardware: the launcher warns you about this before installing. |
 
 You can check the C6 firmware version in CFG → About, in the "ESP32-C6 Wi-Fi" row.
@@ -81,7 +82,7 @@ The RESET button on the side of the Tab5 is the quickest way to get back to the 
 
 The top bar (72 px) is always visible and takes you to every part of the launcher. The tabs sit in a recessed groove: the active one is raised, and a glowing strip under it shows where you are. Taps register across the full height of the bar above the strip, even right next to a button, and for Wi-Fi and power also a few pixels around the icon.
 
-- **Tabs:** HOME, SD, OTA, WUI, PMAN, CFG. Tapping the active tab refreshes it, e.g. SD reads the card again. WUI is empty for now (see Limitations).
+- **Tabs:** HOME, SD, OTA, PMAN, CFG. Tapping the active tab refreshes it, e.g. SD reads the card again.
 - **Wi-Fi icon:** crossed out when Wi-Fi is off, gray while connecting, in the accent color once connected. Tapping it opens the Wi-Fi menu: scanning and connecting, disconnecting, saved networks.
 - **Clock** from the built-in RTC and **battery** level in percent.
 - The **power button** opens a menu:
@@ -99,6 +100,8 @@ HOME shows the "APPS IN FLASH" panel with the apps installed in flash. What it l
 - One wide card across the whole panel: on the left, a 420 px image generated from the app name; on the right, the name, author, and version.
 - Below them are four fields: SOURCE (SD or OTA), INSTALLED (install date), SIZE, and FREE IN SLOT, with the SLOT USE bar further down.
 - **BOOT ‹name›** starts the app right away. **ERASE** removes it from the slot after you confirm; the file on the SD card stays.
+- An app the launcher did not install itself (e.g. flashed over USB) does not start by itself until you choose it: the card has no BOOTS badge and says "NOT STARTED BY ITSELF UNTIL YOU BOOT IT", and the boot screen says "NO APP CHOSEN TO START". BOOT starts it and makes it the boot app.
+- An empty slot also says what each way of installing needs: the SD card works without Wi-Fi, OTA needs Wi-Fi (the ESP32-C6 with ESP-Hosted 2.12.x).
 - An empty slot has an "Empty slot" card with **FROM SD CARD** and **FROM OTA** buttons, which open those tabs.
 
 **Several slots** (2 Apps, 4 Apps, Custom)
@@ -109,6 +112,7 @@ HOME shows the "APPS IN FLASH" panel with the apps installed in flash. What it l
 - **Tapping a card** selects the app that will start after the boot screen. The selected one has a **BOOTS** badge.
 - The **BOOT button** in the footer starts the selected app right away.
 - **Card menu (⋮):** Boot now (start it now), Boot this app after the bootscreen (make it the boot app), and Erase appN (remove it from flash; the file on the card stays).
+- With apps in flash but none chosen (they were not installed by the launcher), the footer says "NO APP CHOSEN TO START · Tap an app to choose it", and nothing starts after the boot screen.
 
 ## SD: card manager
 
@@ -145,6 +149,7 @@ The SD tab browses the card and installs `.bin` apps from it into a slot.
 - **COPY** remembers a file or folder, and the footer shows "CLIPBOARD: name". **PASTE** copies it into the open folder; folders are copied with all their contents. If the name is already taken, you get "name-copy". The launcher first checks that there is enough space, and if you interrupt it (CANCEL), it removes the unfinished copy.
 - **RENAME** and **+ FOLDER** open the on-screen keyboard. For a name that is not allowed (e.g. with the characters / \\ : \* ? " \< > |), a dialog appears with an explanation and an **EDIT NAME** button.
 - **DELETE** always asks for confirmation. For a folder, the dialog shows the number of files and folders, and deleting has a progress bar with CANCEL. Deleting /config.conf restores the default settings.
+- **Putting an old config.conf back:** RENAME a saved copy (e.g. `config.conf.bak` in the card root) to `config.conf`, or PASTE a `config.conf` into the card root. The launcher writes a new config.conf at every change of a setting, so the name is usually taken: the "Replace config.conf?" dialog asks first. **REPLACE** puts the file in place and its settings apply at once ("config.conf put back"); **CANCEL** leaves the files as they are. A file that is not valid JSON goes in place, but the settings stay as they are ("config.conf is not valid").
 - **VIEW** shows .txt, .conf, .json, .cfg, .ini, .md, .csv, .log, and .py files: at most the first 64 KB, scrollable with your finger. Non-ASCII letters (e.g. Polish diacritics) in names and in text are displayed correctly.
 
 ## OTA: installing from the internet
@@ -256,7 +261,6 @@ CFG has three columns: DISPLAY, INSTALL & STORAGE and SYSTEM. Changes take effec
 - **List of partitions**: opens PMAN.
 - **Clear FAT partition**: erases the FAT (vfs) partition, after you confirm.
 - **Save SPIFFS / Restore SPIFFS**: copies the SPIFFS partition to `/sdcard/backups/` on the card and restores it from that copy (like BACKUP / RESTORE in PMAN).
-- **USB Mass Storage**: for now, it only shows a description (see Limitations).
 
 **SYSTEM**
 
@@ -309,7 +313,15 @@ The keyboard opens for the Wi-Fi password, the OTA search and ADD LINK (name and
 - **OK** confirms, **CANCEL** closes without changes.
 - When you type a password, the characters are hidden. The eye button (**SHOW / HIDE**) shows them.
 - When the text is longer than the field, you see its end, with "…" at the start.
-- A physical keyboard and pasting do not work. The "€" character is missing.
+- Pasting does not work. The "€" character is missing.
+
+**M5Stack Tab5 Keyboard**
+
+With the M5Stack Tab5 Keyboard plugged into the side port, a text field opens without the on-screen keys, with the line "KEYBOARD · ENTER = OK · ESC = CANCEL · TAP THE FIELD FOR ON-SCREEN KEYS".
+
+- Letters, digits, symbols and SPACE type into the field (with Shift and Aa as on the keyboard's legends), Backspace deletes, **Enter** is OK and **Esc** is CANCEL.
+- A tap on the field brings back the on-screen keys.
+- The keyboard can be plugged in or pulled out at any time: the launcher looks for it once a second. Before an app starts, the keyboard gets back the mode it had.
 
 ## Safeguards
 
@@ -361,7 +373,8 @@ Every time it starts, the launcher turns on the battery charger (RESET turns it 
 | "No SD card" or "Card not readable" | Insert a card or format it on a computer (FAT32 or exFAT), then TRY AGAIN. The launcher does not format the card. |
 | Settings are not kept after a restart | Without a card, changes last only until a restart. "Could not write /config.conf" means the card is read-only or full. |
 | "App slot too small" | The app is bigger than the slot. Choose USE ‹scheme› or AUTO PARTITION. The confirmation dialog shows which apps will be erased. |
-| "ESP32-C6 not available" | The Wi-Fi chip has a firmware version other than 2.12 (e.g. the factory 1.4.1) or is not responding. The versions are shown in the message and in CFG → About. The rest of the launcher works without Wi-Fi. |
+| "ESP32-C6 needs ESP-Hosted 2.12" or "ESP32-C6 not available" | The Wi-Fi chip has a firmware version other than 2.12 (e.g. the factory 1.4.1) or is not responding. The message (also WHY NO WI-FI in the OTA tab) names the version and what to flash with M5Burner ("Tab5 ESP-Hosted Firmware Upgrade" or "Tab5 ESP32-C6 Wi-Fi SDIO"). The rest of the launcher works without Wi-Fi: install from the SD card. |
+| After power-on the screen stays black and the backlight blinks | The launcher did not recognise the display or touch of this Tab5 (NO DISPLAY) and stops there. RESET tries again. The USB log names the step that failed: please report the board revision at github.com/UNIZERSION/tab5-launcher/issues. |
 | "The ESP32-C6 stopped answering … press RESET" | Press RESET. Wi-Fi will be back after the restart. |
 | "No networks found" | The ESP32-C6 sees only 2.4 GHz networks, and hidden networks are not shown. |
 | "Wrong password" | The saved password has been deleted. Pick the network again and enter the new password. |
@@ -377,13 +390,13 @@ Every time it starts, the launcher turns on the battery charger (RESET turns it 
 
 **Not there yet**
 
-- **WUI**: managing the Tab5 from a browser over Wi-Fi (files, installing, settings). The tab is empty for now.
-- **USB Mass Storage**: the SD card as a drive on a computer over USB-C. For now, CFG only has a description.
+- **WUI**: managing the Tab5 from a browser over Wi-Fi (files, installing, settings). Not in the launcher (its empty tab was removed).
+- **USB Mass Storage**: the SD card as a drive on a computer over USB-C. Not in the launcher (its CFG row was removed).
 - **OTA**: for firmware made of several files, TO SD saves only the main file. You cannot pick a Wi-Fi network in the OTA panel itself (CONNECT opens the scan dialog).
 - **Wi-Fi**: no access point (AP) mode, no switch between the internal and external (MMCX) antenna, and no ESP32-C6 firmware update.
 - **PMAN**: OPTIMIZE FLASH erases apps instead of moving them. For data partitions (SPIFFS, FAT), USED shows only EMPTY / IN USE, without percentages. PMAN does not change tables that do not follow the launcher's rules (UNMANAGED), and with flash encryption enabled, the launcher refuses to change the table.
 - **Installing**: after you change the scheme with the USE ‹scheme› button in the "App slot too small" dialog, you have to pick the file again after the restart. AUTO PARTITION in the check dialog installs without this interruption.
-- **Keyboard**: no "€" character, no physical keyboard and no pasting.
+- **Keyboard**: no "€" character and no pasting. The M5Stack Tab5 Keyboard types only into text fields (no shortcuts, arrows or Tab).
 
 **Known bugs**
 
@@ -391,7 +404,7 @@ No known bugs so far.
 
 **Not yet tested on the device**
 
-These features are in the launcher but have not been tested on the Tab5 yet: resuming an OTA download after the connection drops (including RETRY), CANCEL during a download, \[UPDATE ALL\], favorites and ADD LINK, the APP ONLY / APP + DATA choice and Avoid SPIFFS. In the SD tab: copy and paste, rename, new folder and text preview. In the boot-loop guard: BOOT AGAIN and RESET while the "… was stopped" dialog is open.
+These features are in the launcher but have not been tested on the Tab5 yet: resuming an OTA download after the connection drops (including RETRY), CANCEL during a download, \[UPDATE ALL\], favorites and ADD LINK, the APP ONLY / APP + DATA choice and Avoid SPIFFS. In the SD tab: copy and paste, rename, new folder and text preview. In the boot-loop guard: BOOT AGAIN and RESET while the "… was stopped" dialog is open. Restored from the build of 2026-10-20 and not tested on the device yet: the M5Stack Tab5 Keyboard, putting config.conf back, WHY NO WI-FI, the NO DISPLAY stop, apps that wait until they are chosen, installing with little internal RAM.
 
 **What comes next**
 

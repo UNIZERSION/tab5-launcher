@@ -11,6 +11,7 @@
 #include "l5_display.h" /* L5_TOUCH_TRACE */
 #include "l5_slots.h"
 #include "l5_ui.h"
+#include "l5_wifi.h"
 #if L5_TOUCH_TRACE
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -134,13 +135,14 @@ static void paint_selection(void)
     H.pick = sel && g_slots.boot < MAX_CARDS && H.card[g_slots.boot] ? add_pick(H.card[g_slots.boot]) : NULL;
 
     char line[96], name[40], btn[48];
+    const bool unchosen = !sel && l5_slots_used() > 0; /* flashed by hand: waits for a tap (l5_slots_scan) */
     if (sel) {
         snprintf(line, sizeof(line), "APP%d STARTS AFTER THE %us BOOTSCREEN", g_slots.boot, g_cfg.bootTime);
     } else {
-        snprintf(line, sizeof(line), "NO APP IN FLASH");
+        snprintf(line, sizeof(line), unchosen ? "NO APP CHOSEN TO START" : "NO APP IN FLASH");
     }
     set_label(H.line, line);
-    set_label(H.name, sel ? sel->name : "Install a firmware first");
+    set_label(H.name, sel ? sel->name : unchosen ? "Tap an app to choose it" : "Install a firmware first");
     upper(name, sel ? sel->name : "APP", sizeof(name));
     snprintf(btn, sizeof(btn), "BOOT %s", name);
     if (H.boot) {
@@ -197,6 +199,14 @@ static void card_cb(lv_event_t *e)
 static void boot_cb(lv_event_t *e)
 {
     (void)e;
+    l5_boot_app();
+}
+
+/* BOOT on the one-slot card: also when app0 is not chosen yet (flashed by hand), it becomes the boot app */
+static void hero_boot_cb(lv_event_t *e)
+{
+    (void)e;
+    l5_slots_select(0);
     l5_boot_app();
 }
 
@@ -311,7 +321,7 @@ static void empty_card(lv_obj_t *card, int i)
     lv_obj_set_style_pad_top(b, 6, 0);
     char kb[16], t[96];
     l5_fmt_kb(kb, sizeof(kb), g_slots.slot_kb);
-    snprintf(t, sizeof(t), "%sB free for one firmware.\nInstall it from SD, OTA or WUI.", kb);
+    snprintf(t, sizeof(t), "%sB free for one firmware.\nInstall it from SD or OTA.", kb);
     lv_obj_t *meta = l5_label(col, &l5_mono_14, L5_ON_PANEL_MUTED, t);
     lv_obj_set_style_text_align(meta, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_line_space(meta, 4, 0);
@@ -458,8 +468,9 @@ static void hero_facts(lv_obj_t *info, const char *const labels[4], const char *
 static void hero_used(lv_obj_t *card)
 {
     const l5_slot_t *s = &g_slots.slot[0];
+    const bool boots = g_slots.boot == 0; /* not when it was flashed by hand and nobody chose it yet */
     lv_obj_add_style(card, &L5S.slot, 0);
-    lv_obj_add_style(card, &L5S.slot_sel, 0); /* .hero.sel: the only app is the one that boots */
+    if (boots) lv_obj_add_style(card, &L5S.slot_sel, 0); /* .hero.sel: the only app is the one that boots */
     /* the image has no author: the catalog author (OTA), else the project name when the registry renamed the app */
     const char *who = s->author[0] ? s->author : strcmp(s->name, s->project) ? s->project : NULL;
 #if L5_TOUCH_TRACE
@@ -475,7 +486,7 @@ static void hero_used(lv_obj_t *card)
     lv_obj_set_style_pad_row(info, 16, 0);
     lv_obj_set_flex_flow(info, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(info, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    hero_top(info, true);
+    hero_top(info, boots);
 
     char by[96];
     const char *v = s->ver[0] == 'v' || s->ver[0] == 'V' ? "" : "v";
@@ -514,13 +525,17 @@ static void hero_used(lv_obj_t *card)
     lv_bar_set_range(meter, 0, 100);
     lv_bar_set_value(meter, pct > 100 ? 100 : pct, LV_ANIM_OFF);
 
-    snprintf(t, sizeof(t), "STARTS AFTER THE %us BOOTSCREEN", g_cfg.bootTime);
+    if (boots) {
+        snprintf(t, sizeof(t), "STARTS AFTER THE %us BOOTSCREEN", g_cfg.bootTime);
+    } else {
+        strlcpy(t, "NOT STARTED BY ITSELF UNTIL YOU BOOT IT", sizeof(t));
+    }
     char name[L5_NAME_LEN], btn[L5_NAME_LEN + 8]; /* the whole name: the label cuts it with dots */
     upper(name, s->name, sizeof(name));
     snprintf(btn, sizeof(btn), "BOOT %s", name);
     lv_obj_t *row = hero_go(info, t);
     lv_obj_t *boot = hero_buttons(row, L5_ICON_LAUNCH, btn, L5_ICON_TRASH, "ERASE");
-    lv_obj_add_event_cb(boot, boot_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(boot, hero_boot_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(lv_obj_get_child(row, 1), erase_cb, LV_EVENT_CLICKED, NULL);
 }
 
@@ -576,6 +591,14 @@ static void hero_empty(lv_obj_t *card)
         snprintf(t, sizeof(t), "SD CARD: %s", l5_board_sd_status(false));
         spaced(head, &l5_mono_13, L5_WARN, t);
     }
+    /* the two ways in, and what each needs (a Tab5 whose C6 has another ESP-Hosted has only the first) */
+    char how[160];
+    snprintf(how, sizeof(how), "SD card: copy .bin files (ESP32-P4 apps) to a FAT32 or exFAT card.\nOTA: the online catalog. "
+             "Needs Wi-Fi: the ESP32-C6 with ESP-Hosted %s.x.", l5_wifi_host_series());
+    lv_obj_t *hw = l5_label(info, &l5_mono_14, L5_ON_PANEL_MUTED, how);
+    lv_obj_set_width(hw, lv_pct(100));
+    lv_label_set_long_mode(hw, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_line_space(hw, 6, 0);
     lv_obj_t *row = hero_go(info, "INSTALL A FIRMWARE");
     lv_obj_t *sd = hero_buttons(row, L5_ICON_SD, "FROM SD CARD", L5_ICON_OTA, "FROM OTA");
     lv_obj_add_event_cb(sd, go_cb, LV_EVENT_CLICKED, (void *)(intptr_t)L5_VIEW_SD);

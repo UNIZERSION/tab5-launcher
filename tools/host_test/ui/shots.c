@@ -260,8 +260,6 @@ static void home_shots(void)
     shot("32_ota_no_wifi");
     shots_wifi_state = L5_WIFI_CONNECTED;
     l5_topbar_paint_wifi();
-    l5_ui_go(L5_VIEW_WUI);
-    shot("33_wui");
 
     /* Charge Mode: the real charge, the state line, the pulsing tip while charging */
     static const struct {
@@ -393,19 +391,24 @@ static const char *hit(int32_t x, int32_t y)
 
 static int taps_test(void)
 {
-    static const char *const TABS[] = {"HOME", "SD", "OTA", "WUI", "PMAN", "CFG"};
-    lv_area_t key[6];
-    for (int i = 0; i < 6; i++) { /* the keys' places: search at their middle */
-        lv_point_t p = {(int32_t)(435 + 38 + i * 79.5), 34};
+    static const char *const TABS[L5_VIEW_COUNT] = {"HOME", "SD", "OTA", "PMAN", "CFG"};
+    enum { N = L5_VIEW_COUNT };
+    lv_area_t key[N];
+    int found = 0;
+    lv_obj_t *last = NULL;
+    for (int32_t x = 300; x < 1000 && found < N; x++) { /* the keys' places, left to right */
+        lv_point_t p = {x, 34};
         lv_obj_t *o = lv_indev_search_obj(lv_screen_active(), &p);
-        if (!o) {
-            printf("  FAIL: no key under %d,%d\n", (int)p.x, (int)p.y);
-            return 1;
-        }
-        lv_obj_get_coords(o, &key[i]);
+        if (!o || o == last || strcmp(hit(x, 34), TABS[found])) continue;
+        last = o;
+        lv_obj_get_coords(o, &key[found++]);
+    }
+    if (found < N) {
+        printf("  FAIL: found %d of %d tab keys\n", found, N);
+        return 1;
     }
     EXPECT(lv_area_get_height(&key[0]) == 47, "keys are %d px high", (int)lv_area_get_height(&key[0]));
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < N; i++) {
         const lv_area_t *a = &key[i];
         int32_t cx = (a->x1 + a->x2) / 2, cy = 34;
         EXPECT_HIT(cx, cy, TABS[i]);
@@ -414,7 +417,7 @@ static int taps_test(void)
         EXPECT_HIT(cx, 0, TABS[i]);                 /* the top of the bar */
         EXPECT_HIT(cx, L5_TOPBAR_H - 4, TABS[i]);   /* just above the seam */
         EXPECT_HIT(cx, L5_TOPBAR_H - 3, "-");       /* the seam */
-        if (i < 5) {                                /* the 3 px gap: 2 px left key, 1 px right key */
+        if (i < N - 1) {                            /* the 3 px gap: 2 px left key, 1 px right key */
             EXPECT_HIT(a->x2 + 1, cy, TABS[i]);
             EXPECT_HIT(a->x2 + 2, cy, TABS[i]);
             EXPECT_HIT(a->x2 + 3, cy, TABS[i + 1]);
@@ -423,8 +426,8 @@ static int taps_test(void)
     }
     EXPECT_HIT(key[0].x1 - 6, 34, "HOME");
     EXPECT_HIT(key[0].x1 - 7, 34, "-");
-    EXPECT_HIT(key[5].x2 + 6, 34, "CFG");
-    EXPECT_HIT(key[5].x2 + 7, 34, "-");
+    EXPECT_HIT(key[N - 1].x2 + 6, 34, "CFG");
+    EXPECT_HIT(key[N - 1].x2 + 7, 34, "-");
 
     /* Wi-Fi and power: 52 px, 6 px more around them */
     static const char *const BTN[] = {"WIFI", "POWER"};

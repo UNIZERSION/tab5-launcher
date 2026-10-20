@@ -8,8 +8,9 @@
 #include "lvgl.h"
 
 /* Powers the panel, starts the esp_lvgl_port task, creates the display and the touch input.
-   rot = cfg.rot (0 or 180). */
-esp_err_t l5_display_start(uint16_t rot, lv_display_t **display);
+   rot = cfg.rot (0 or 180). *step: the start-up step that ran last, so on an error the one that failed
+   ("LCD power (I2C bus, IO expander 0x43, LCD_EN)", or why the board was not recognised). */
+esp_err_t l5_display_start(uint16_t rot, lv_display_t **display, const char **step);
 lv_indev_t *l5_display_touch(void);
 /* the later Tab5 display/touch the start-up probe found ("ST7121 + ST712x"), NULL for ILI9881C + GT911 */
 const char *l5_display_new_panel(void);

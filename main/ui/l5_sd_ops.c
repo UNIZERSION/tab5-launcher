@@ -281,6 +281,70 @@ static void confirm_delete(void)
     l5_confirm("SD", title, s_body, "DELETE", true, delete_ok_cb, NULL);
 }
 
+/* ---------- an old config.conf put back (RENAME or PASTE onto the name /config.conf) ----------
+   The launcher writes /config.conf at every change of a setting, also after the file was deleted, so the name is
+   taken by the time a saved copy comes back: it asks, swaps the files (l5_config_replace) and applies the settings. */
+
+static struct {
+    char path[L5_FILES_PATH]; /* the file that becomes /config.conf */
+    char name[256];           /* its name now */
+    bool copy;                /* PASTE: a copy made next to config.conf */
+} s_repl;
+
+static void replace_now(void)
+{
+    l5_cfg_discard_pending(); /* a settings save still waiting would write the old settings into the new file */
+    if (l5_config_replace(s_repl.path) != ESP_OK) {
+        snprintf(s_body, sizeof(s_body),
+                 s_repl.copy ? "The copy %s could not take the name config.conf: it stays next to it."
+                             : "%s could not take the name config.conf. Both files are as they were.",
+                 s_repl.name);
+        l5_info("SD", "Not replaced", s_body);
+        l5_sd_after_op(NULL, s_repl.name);
+        return;
+    }
+    clip_renamed(s_repl.path, L5_CONFIG_PATH);
+    if (l5_cfg_reload_now() != ESP_OK) {
+        l5_info("SD", "config.conf is not valid",
+                "The new config.conf is not a JSON object, so the settings stay as they are. Fix the file on a computer: "
+                "the next change of a setting writes a new config.conf over it.");
+        l5_sd_after_op(NULL, base_name(L5_CONFIG_PATH));
+        return;
+    }
+    l5_toast("config.conf put back: its settings apply now"); /* l5_cfg_reload_now() rendered every view */
+}
+
+static void replace_cb(bool ok, void *user)
+{
+    (void)user;
+    if (ok) {
+        replace_now();
+        return;
+    }
+    l5_toast("Not replaced");
+    l5_sd_after_op(NULL, s_repl.copy ? s_repl.name : NULL);
+}
+
+/* shown: the name in the question (PASTE: the file that was copied, not the copy) */
+static void ask_replace(const char *path, const char *name, bool copy, const char *shown)
+{
+    strlcpy(s_repl.path, path, sizeof(s_repl.path));
+    strlcpy(s_repl.name, name, sizeof(s_repl.name));
+    s_repl.copy = copy;
+    snprintf(s_body, sizeof(s_body),
+             "The card already has a config.conf: the launcher writes one at every change of a setting, also after the "
+             "old one was deleted. REPLACE puts %s%s in its place, and its settings apply now. CANCEL leaves the files as "
+             "they are.", copy ? "a copy of " : "", shown);
+    l5_ask("SD", "Replace config.conf?", s_body, "CANCEL", "REPLACE", L5_ICON_RESTART, replace_cb, NULL);
+}
+
+/* a file at `path` would be named /config.conf (any letter case) while the card has one */
+static bool onto_config(const char *path)
+{
+    struct stat st;
+    return l5_files_same_name(path, L5_CONFIG_PATH) && stat(L5_CONFIG_PATH, &st) == 0 && !S_ISDIR(st.st_mode);
+}
+
 static void paste_done(void)
 {
     char a[16], b[16];
@@ -293,6 +357,19 @@ static void paste_done(void)
         snprintf(s_body, sizeof(s_body), "%s could not be read completely, so nothing was copied.", base_name(J.src));
         l5_info("PASTE", "Paste failed", s_body);
     } else if (J.err == ESP_OK) {
+        /* a config.conf pasted into the card root: it became config-copy.conf next to the one the launcher wrote */
+        char dir[L5_FILES_PATH], want[L5_FILES_PATH];
+        bool config_copy = !J.dir && l5_files_parent(J.dst, dir, sizeof(dir)) &&
+                           l5_files_join(want, sizeof(want), dir, base_name(J.src)) && onto_config(want) &&
+                           !l5_files_same_name(J.dst, L5_CONFIG_PATH);
+        if (config_copy) {
+            ask_replace(J.dst, J.name, true, base_name(J.src));
+            return;
+        }
+        if (!J.dir && l5_files_same_name(J.dst, L5_CONFIG_PATH) && l5_cfg_reload_now() == ESP_OK) {
+            l5_toast("config.conf put back: its settings apply now"); /* there was none: nothing to replace */
+            return;
+        }
         l5_toast("Pasted %s%s", J.name, hidden_note(J.name, J.dir));
         l5_sd_after_op(NULL, J.name);
     } else if (J.err == L5_FILES_CANCELLED && !J.res.left) {
@@ -423,6 +500,10 @@ static void keyboard_cb(const char *text, void *user)
         return;
     }
     struct stat st;
+    if (!s_edit.mkdir && !s_edit.dir && !l5_files_same_name(name, old) && onto_config(to)) {
+        ask_replace(s_edit.path, old, false, old); /* a saved config.conf renamed back */
+        return;
+    }
     if ((s_edit.mkdir || !l5_files_same_name(name, old)) && stat(to, &st) == 0) { /* letter case only: same entry */
         snprintf(why, sizeof(why), "A %s named %s is already in this folder.", S_ISDIR(st.st_mode) ? "folder" : "file", name);
         refuse("Name already used", why);

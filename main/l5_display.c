@@ -642,22 +642,41 @@ static bool s_st712x;
 static uint8_t s_touch_fw;
 
 /* BSP 1.3.2 keeps its board detection private but needs 965 Mbps for the ST7121 panel
-   (touch firmware byte 1 at register 0 of the ST712x touch, 3 = ST7123). Same probe as Aurora. */
-static uint32_t panel_lane_rate(void)
+   (touch firmware byte 1 at register 0 of the ST712x touch, 3 = ST7123). Same probe as Aurora.
+   A board that matches none of the known ones is not started: bsp_display_new() stops at an assert() for it (a
+   panic, and a panic boots the app in otadata), or its panel would get a lane rate and an init sequence made for
+   another one. NULL when the board is known, else why not (for the NO DISPLAY line). The same tests as the BSP's
+   own detection (ST712x at 0x55 with firmware byte 1 or 3, else GT911 at 0x14). */
+static const char *detect_panel(uint32_t *lane_mbps)
 {
-    if (bsp_feature_enable(BSP_FEATURE_TOUCH, true) != ESP_OK) return 1000;
+    *lane_mbps = 1000;
+    if (bsp_feature_enable(BSP_FEATURE_TOUCH, true) != ESP_OK) {
+        return "touch power (TOUCH_EN on IO expander 0x43) could not be set";
+    }
     vTaskDelay(pdMS_TO_TICKS(500));
-    if (i2c_master_probe(bsp_i2c_get_handle(), 0x55, 100) != ESP_OK) return 1000;
+    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    if (i2c_master_probe(bus, 0x55, 100) != ESP_OK) {
+        if (i2c_master_probe(bus, 0x14, 100) == ESP_OK) return NULL; /* GT911: the first boards, ILI9881C */
+        return "no touch controller at I2C 0x55 (ST712x) or 0x14 (GT911): a Tab5 board revision this launcher does not know";
+    }
     s_st712x = true;
     const i2c_device_config_t cfg = {.dev_addr_length = I2C_ADDR_BIT_LEN_7, .device_address = 0x55, .scl_speed_hz = 400000};
     i2c_master_dev_handle_t dev;
-    if (i2c_master_bus_add_device(bsp_i2c_get_handle(), &cfg, &dev) != ESP_OK) return 1000;
-    const uint8_t reg[] = {0, 0};
     uint8_t fw = 0;
-    const esp_err_t err = i2c_master_transmit_receive(dev, reg, 2, &fw, 1, 100);
-    i2c_master_bus_rm_device(dev);
-    if (err == ESP_OK) s_touch_fw = fw;
-    return err == ESP_OK && fw == 1 ? 965 : 1000;
+    esp_err_t err = i2c_master_bus_add_device(bus, &cfg, &dev);
+    if (err == ESP_OK) {
+        const uint8_t reg[] = {0, 0};
+        err = i2c_master_transmit_receive(dev, reg, 2, &fw, 1, 100);
+        i2c_master_bus_rm_device(dev);
+    }
+    s_touch_fw = fw;
+    if (err == ESP_OK && fw == 1) {
+        *lane_mbps = 965; /* ST7121 */
+        return NULL;
+    }
+    if (err == ESP_OK && fw == 3) return NULL; /* ST7123 */
+    ESP_LOGE(TAG, "ST712x touch firmware byte %u (1 = ST7121 panel, 3 = ST7123)", fw);
+    return "ST712x touch with an unknown firmware byte: a Tab5 panel this launcher does not know";
 }
 
 const char *l5_display_new_panel(void)
@@ -696,7 +715,18 @@ static void prioritize_scanout_reads(void)
     axi_icm_ll_set_dw_gdma_qos_arbiter_prio(1, write_priority, 15);
 }
 
-esp_err_t l5_display_start(uint16_t rot, lv_display_t **result)
+/* every start-up step has a name: when one fails, the log and the NO DISPLAY line (l5_board.c) say which */
+#define STEP(call, what)                                                \
+    do {                                                                \
+        *step = (what);                                                 \
+        esp_err_t step_err_ = (call);                                   \
+        if (step_err_ != ESP_OK) {                                      \
+            ESP_LOGE(TAG, "%s: %s", *step, esp_err_to_name(step_err_)); \
+            return step_err_;                                           \
+        }                                                               \
+    } while (0)
+
+esp_err_t l5_display_start(uint16_t rot, lv_display_t **result, const char **step)
 {
     *result = NULL;
     lvgl_port_cfg_t port = ESP_LVGL_PORT_INIT_CONFIG();
@@ -705,42 +735,51 @@ esp_err_t l5_display_start(uint16_t rot, lv_display_t **result)
     port.task_affinity = 0;
     port.task_max_sleep_ms = 100;
     port.timer_period_ms = 5;
-    ESP_RETURN_ON_ERROR(enable_lcd_power(), TAG, "LCD power");
-    ESP_RETURN_ON_ERROR(lvgl_port_init(&port), TAG, "LVGL task");
-    bsp_display_config_t config = {.dsi_bus = {.lane_bit_rate_mbps = panel_lane_rate()}};
+    STEP(enable_lcd_power(), "LCD power (I2C bus, IO expander 0x43, LCD_EN)");
+    STEP(lvgl_port_init(&port), "LVGL task");
+    uint32_t lane_mbps;
+    *step = "display / touch detection";
+    const char *unknown = detect_panel(&lane_mbps);
+    if (unknown) { /* the NO DISPLAY line names the reason, the log both */
+        ESP_LOGE(TAG, "%s: %s", *step, unknown);
+        *step = unknown;
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    bsp_display_config_t config = {.dsi_bus = {.lane_bit_rate_mbps = lane_mbps}};
     esp_lcd_panel_io_handle_t io;
     prioritize_scanout_reads();
-    ESP_RETURN_ON_ERROR(bsp_display_new(&config, &panel, &io), TAG, "BSP panel");
-    ESP_RETURN_ON_ERROR(esp_lcd_dpi_panel_get_frame_buffer(panel, 3, (void **)&frames[0], (void **)&frames[1],
-                                                           (void **)&frames[2]), TAG, "3 frame buffers (CONFIG_BSP_LCD_DPI_BUFFER_NUMS=3)");
+    STEP(bsp_display_new(&config, &panel, &io), "BSP panel start (MIPI-DSI)");
+    STEP(esp_lcd_dpi_panel_get_frame_buffer(panel, 3, (void **)&frames[0], (void **)&frames[1], (void **)&frames[2]),
+         "3 frame buffers (CONFIG_BSP_LCD_DPI_BUFFER_NUMS=3)");
     const ppa_client_config_t ppa_config = {.oper_type = PPA_OPERATION_SRM}; /* burst: max (128 B) by default */
-    ESP_RETURN_ON_ERROR(ppa_register_client(&ppa_config, &ppa), TAG, "PPA");
+    STEP(ppa_register_client(&ppa_config, &ppa), "PPA");
     vsync = xSemaphoreCreateBinary();
-    if (!vsync) return ESP_ERR_NO_MEM;
+    STEP(vsync ? ESP_OK : ESP_ERR_NO_MEM, "VSYNC semaphore");
     const esp_timer_create_args_t report_args = {.callback = report_cb, .name = "l5_frame"};
-    ESP_RETURN_ON_ERROR(esp_timer_create(&report_args, &report_timer), TAG, "report timer");
+    STEP(esp_timer_create(&report_args, &report_timer), "report timer");
     const esp_lcd_dpi_panel_event_callbacks_t callbacks = {.on_refresh_done = on_refresh};
-    ESP_RETURN_ON_ERROR(esp_lcd_dpi_panel_register_event_callbacks(panel, &callbacks, NULL), TAG, "VSYNC callback");
+    STEP(esp_lcd_dpi_panel_register_event_callbacks(panel, &callbacks, NULL), "VSYNC callback");
     const unsigned caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA;
     void *draw0 = heap_caps_aligned_alloc(64, DRAW_PIXELS * 2, caps);
     void *draw1 = heap_caps_aligned_alloc(64, DRAW_PIXELS * 2, caps);
     if (!draw0 || !draw1) {
         free(draw0);
         free(draw1);
-        return ESP_ERR_NO_MEM;
     }
-    if (!lvgl_port_lock(1000)) {
+    STEP(draw0 && draw1 ? ESP_OK : ESP_ERR_NO_MEM, "LVGL draw buffers in PSRAM");
+    const bool locked = lvgl_port_lock(1000);
+    if (!locked) {
         free(draw0);
         free(draw1);
-        return ESP_ERR_TIMEOUT;
     }
+    STEP(locked ? ESP_OK : ESP_ERR_TIMEOUT, "LVGL lock");
     lv_display_t *display = lv_display_create(NATIVE_W, NATIVE_H);
     presentation_queue = xQueueCreate(1, sizeof(present_job_t));
     presentation_done = xSemaphoreCreateBinary();
     if (!display || !presentation_queue || !presentation_done ||
         xTaskCreatePinnedToCore(presentation_worker, "l5_present", 6144, NULL, 5, NULL, 0) != pdPASS) {
         lvgl_port_unlock();
-        return ESP_ERR_NO_MEM;
+        STEP(ESP_ERR_NO_MEM, "LVGL display, presentation task");
     }
     lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
     lv_display_set_buffers(display, draw0, draw1, DRAW_PIXELS * 2, LV_DISPLAY_RENDER_MODE_PARTIAL);

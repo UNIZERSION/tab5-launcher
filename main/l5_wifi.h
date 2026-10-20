@@ -26,8 +26,9 @@ typedef struct {
     char ssid[33];    /* CONNECTING / CONNECTED */
     char ip[16];      /* CONNECTED */
     int rssi;         /* CONNECTED, dBm */
-    char c6_fw[16];   /* ESP-Hosted version reported by the C6, "" until asked */
+    char c6_fw[16];   /* ESP-Hosted version reported by the C6, "" until asked, "unknown" when it did not say */
     char error[160];  /* FAILED */
+    bool c6_mismatch; /* FAILED at the version gate: the C6 runs another ESP-Hosted major.minor (or none it reports) */
 } l5_wifi_status_t;
 
 typedef struct {
@@ -79,6 +80,7 @@ void l5_wifi_forget(const char *ssid); /* the current connection stays up */
 void l5_wifi_forget_all(void);
 
 const char *l5_wifi_host_version(void);      /* ESP-Hosted host release, "2.12.6" */
+const char *l5_wifi_host_series(void);       /* its major.minor, "2.12": what the C6 has to run */
 const char *l5_wifi_auth_name(uint8_t auth); /* "WPA2", "OPEN", ... */
 bool l5_wifi_auth_needs_password(uint8_t auth);
 bool l5_wifi_auth_supported(uint8_t auth); /* enterprise (802.1X) networks need more than a password */

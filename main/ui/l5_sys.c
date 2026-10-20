@@ -161,14 +161,17 @@ void l5_boot_screen(void)
     lv_obj_t *ab = col_box(l);
     lv_obj_set_style_pad_top(ab, 70, 0);
     lv_obj_set_style_pad_row(ab, 8, 0);
+    /* apps in flash but none chosen (flashed by hand, l5_slots_scan): the launcher opens, as with no app */
+    const bool unchosen = !app && l5_slots_used() > 0;
     if (app) {
         snprintf(t, sizeof(t), "APP%d \xC2\xB7 %d OF %d SLOTS USED", g_slots.boot, l5_slots_used(), g_slots.n);
     } else {
-        snprintf(t, sizeof(t), "NO APP INSTALLED");
+        snprintf(t, sizeof(t), unchosen ? "NO APP CHOSEN TO START" : "NO APP INSTALLED");
     }
     lv_obj_t *k = l5_label(ab, &l5_mono_14, L5_ON_PANEL_MUTED, t);
     lv_obj_set_style_text_letter_space(k, 3, 0);
-    lv_obj_t *nm = l5_label(ab, &l5_chakra_b40, L5_WHITE, app ? app->name : "Install one from SD, OTA or WUI");
+    lv_obj_t *nm = l5_label(ab, &l5_chakra_b40, L5_WHITE,
+                            app ? app->name : unchosen ? "Choose one in HOME" : "Install one from SD or OTA");
     lv_obj_set_style_max_width(nm, 560, 0);
     lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT);
 
@@ -299,7 +302,7 @@ static void handoff_task(void *arg)
     l5_ui_set_booted(true);
     l5_ui_show(L5_VIEW_HOME);
     char body[120];
-    snprintf(body, sizeof(body), "app%d did not pass the image check (%s). Reinstall it from SD, OTA or WUI.",
+    snprintf(body, sizeof(body), "app%d did not pass the image check (%s). Reinstall it from SD or OTA.",
              slot, esp_err_to_name(err));
     l5_info("BOOT", "Cannot start the app", body);
     l5_board_unlock();

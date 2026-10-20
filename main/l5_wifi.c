@@ -312,6 +312,11 @@ const char *l5_wifi_host_version(void)
         ESP_HOSTED_VERSION_PATCH_1);
 }
 
+const char *l5_wifi_host_series(void)
+{
+    return L5_XSTR(ESP_HOSTED_VERSION_MAJOR_1) "." L5_XSTR(ESP_HOSTED_VERSION_MINOR_1);
+}
+
 const char *l5_wifi_auth_name(uint8_t auth)
 {
     switch (auth) {
@@ -521,8 +526,13 @@ static esp_err_t bring_up(void)
     portEXIT_CRITICAL(&s_mux);
     /* same major.minor as ESP-Hosted's own compare_fw_version(), but enforced */
     if (!known || fw.major1 != ESP_HOSTED_VERSION_MAJOR_1 || fw.minor1 != ESP_HOSTED_VERSION_MINOR_1) {
+        portENTER_CRITICAL(&s_mux);
+        s_st.c6_mismatch = true; /* the UI explains what to flash (l5_wifi_why) */
+        portEXIT_CRITICAL(&s_mux);
         fail("The ESP32-C6 runs ESP-Hosted %s, this launcher talks ESP-Hosted %d.%d.x. Wi-Fi stays off: the two "
              "would misread each other's messages.", ver, ESP_HOSTED_VERSION_MAJOR_1, ESP_HOSTED_VERSION_MINOR_1);
+        ESP_LOGE(TAG, "flash the C6 with M5Burner (\"Tab5 ESP-Hosted Firmware Upgrade\" or \"Tab5 ESP32-C6 Wi-Fi SDIO\", "
+                      "%s); installing from SD works without Wi-Fi", l5_wifi_host_version());
         return ESP_ERR_NOT_SUPPORTED;
     }
 

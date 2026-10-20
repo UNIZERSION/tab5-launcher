@@ -9,6 +9,7 @@
 #include "nvs_flash.h"
 #include "l5_board.h"
 #include "l5_config.h"
+#include "l5_kbd.h"
 #include "l5_ptable.h"
 #include "l5_slots.h"
 #include "l5_wifi.h"
@@ -61,6 +62,7 @@ void app_main(void)
     int stopped = l5_slots_stopped();
     bool boot_stopped = stopped >= 0 && stopped == g_slots.boot;
     l5_board_set_rotation(g_cfg.rot);
+    l5_kbd_init(); /* M5Stack Tab5 Keyboard on the side port, own I2C bus: looked for once a second */
 
     l5_board_lock(0);
     l5_theme_init(l5_config_accent_hex(&g_cfg));

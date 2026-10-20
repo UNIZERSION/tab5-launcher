@@ -12,6 +12,7 @@
 #include "l5_config.h"
 #include "l5_fw.h"
 #include "l5_inst.h"
+#include "l5_kbd.h"
 #include "l5_net.h"
 #include "l5_ptable.h"
 #include "l5_slots.h"
@@ -241,6 +242,13 @@ const char *l5_wifi_summary(char *buf, size_t len)
 const char *l5_wifi_host_version(void) { return "2.12.6"; }
 void l5_wifi_forget_all(void) {}
 void l5_wifi_pick(void) {}
+void l5_wifi_why(void) {}
+const char *l5_wifi_host_series(void) { return "2.12"; }
+
+/* no Tab5 Keyboard on the PC: the on-screen keyboard shows its keys */
+bool l5_kbd_present(void) { return false; }
+bool l5_kbd_get(l5_kbd_key_t *key) { (void)key; return false; }
+void l5_kbd_flush(void) {}
 
 esp_err_t l5_net_open(const char *url, uint32_t offset, uint32_t len, volatile bool *cancel, l5_net_stream_t **out,
                       int64_t *length, int64_t *total, l5_net_err_t *e)

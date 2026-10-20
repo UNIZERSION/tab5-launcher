@@ -232,6 +232,26 @@ esp_err_t l5_config_remove(void)
     return err;
 }
 
+/* The current file steps aside as config.conf.old first: when src cannot take its name, the old one gets its name
+   back and nothing changed. Under the file lock, so no settings save writes in between. */
+esp_err_t l5_config_replace(const char *src)
+{
+    xSemaphoreTake(file_lock(), portMAX_DELAY);
+    remove(L5_CONFIG_OLD);
+    bool had = rename(L5_CONFIG_PATH, L5_CONFIG_OLD) == 0;
+    bool ok = rename(src, L5_CONFIG_PATH) == 0;
+    if (had) {
+        if (ok) {
+            remove(L5_CONFIG_OLD);
+        } else {
+            rename(L5_CONFIG_OLD, L5_CONFIG_PATH);
+        }
+    }
+    xSemaphoreGive(file_lock());
+    ESP_LOGI(TAG, "%s put in place of %s%s", src, L5_CONFIG_PATH, ok ? "" : ": failed, nothing changed");
+    return ok ? ESP_OK : ESP_FAIL;
+}
+
 /* ---------- OTA favorites: Launcher's "favorite": [{name, fid, link}] ---------- */
 
 esp_err_t l5_favs_load(l5_favs_t *out)

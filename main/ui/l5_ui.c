@@ -6,7 +6,7 @@
 #include "l5_display.h"
 #if L5_TOUCH_TRACE
 #include "esp_timer.h"
-static const char *const TRACE_VIEW[L5_VIEW_COUNT] = {"HOME", "SD", "OTA", "WUI", "PMAN", "CFG"};
+static const char *const TRACE_VIEW[L5_VIEW_COUNT] = {"HOME", "SD", "OTA", "PMAN", "CFG"};
 #endif
 
 /* .screen > .topbar + .views, then #layer (z20), #sys (z30), toasts (z40), #veil (z50) */
@@ -256,7 +256,7 @@ static void prebuild_cb(lv_timer_t *t)
 /* tap: the user tapped the view's tab (the active tab is rebuilt); render: the frame is published now and timed */
 static void go(l5_view_t view, bool tap, bool render)
 {
-    static const char *const NAMES[L5_VIEW_COUNT] = {"tab HOME", "tab SD", "tab OTA", "tab WUI", "tab PMAN", "tab CFG"};
+    static const char *const NAMES[L5_VIEW_COUNT] = {"tab HOME", "tab SD", "tab OTA", "tab PMAN", "tab CFG"};
     if (render) l5_display_mark(NAMES[view]); /* logs the timing of the frame this switch publishes */
     /* Tapping the active tab rebuilds it (e.g. re-reads the SD card). A missing or stale view is
        built while still hidden. Then everything flips inside this one LVGL event: tab bar, old

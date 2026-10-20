@@ -8,7 +8,7 @@
 #include "l5_theme.h"
 
 typedef enum {
-    L5_VIEW_HOME, L5_VIEW_SD, L5_VIEW_OTA, L5_VIEW_WUI, L5_VIEW_PMAN, L5_VIEW_CFG, L5_VIEW_COUNT,
+    L5_VIEW_HOME, L5_VIEW_SD, L5_VIEW_OTA, L5_VIEW_PMAN, L5_VIEW_CFG, L5_VIEW_COUNT,
 } l5_view_t;
 
 /* ---------- screen (l5_ui.c) ---------- */
@@ -57,6 +57,7 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
 void l5_wifi_ui_init(void);  /* status listener for the top bar, CFG and OTA */
 void l5_wifi_menu(void);     /* top bar icon, CFG > Wi-Fi networks */
 void l5_wifi_pick(void);     /* scan, pick, password on the keyboard, connect */
+void l5_wifi_why(void);      /* Wi-Fi FAILED: why (another ESP-Hosted on the C6: what to flash) */
 const char *l5_wifi_summary(char *buf, size_t len); /* "Connected: X" / "N saved" */
 
 /* ---------- views ---------- */
@@ -70,7 +71,8 @@ esp_err_t l5_cfg_flush(void);  /* write a pending change now (restart, power-off
 esp_err_t l5_cfg_save_now(void); /* write g_cfg now (from any task) */
 void l5_cfg_discard_pending(void); /* /config.conf is about to be deleted: a pending change is not written */
 void l5_cfg_defaults_now(void);    /* /config.conf was deleted: defaults applied (scheme kept), not saved */
-void l5_views_render(l5_view_t v, lv_obj_t *view);    /* l5_views.c: routing + WUI placeholder */
+esp_err_t l5_cfg_reload_now(void); /* /config.conf was replaced: its settings apply now (scheme kept); not JSON: kept */
+void l5_views_render(l5_view_t v, lv_obj_t *view);    /* l5_views.c: routing */
 
 /* ---------- PMAN (l5_pman.c) ---------- */
 void l5_pman_render(lv_obj_t *view);

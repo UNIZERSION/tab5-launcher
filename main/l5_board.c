@@ -23,12 +23,27 @@ static i2c_master_dev_handle_t s_rtc, s_ina;
 
 /* ---------- display / touch ---------- */
 
+/* Without a picture nothing the launcher shows can be seen: say once in the log what failed and blink the backlight
+   (1 s on, 1 s off) so the Tab5 does not look dead. Nothing starts by itself from here: RESET runs the launcher again. */
+static void no_display(const char *step)
+{
+    ESP_LOGE(TAG, "NO DISPLAY: %s. The launcher stops here (backlight blinks); RESET tries again. Please report the "
+                  "Tab5 board revision at github.com/UNIZERSION/tab5-launcher/issues", step ? step : "the panel did not start");
+    bsp_display_brightness_init(); /* the panel start may have failed before the backlight PWM existed */
+    for (bool on = true;; on = !on) {
+        bsp_display_brightness_set(on ? 60 : 0);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
 lv_display_t *l5_board_display_start(uint16_t rot)
 {
     /* l5_display.c: hidden frame buffer per LVGL refresh, published at VSYNC (no tearing) */
-    esp_err_t err = l5_display_start(rot, &s_disp);
+    const char *step = NULL;
+    esp_err_t err = l5_display_start(rot, &s_disp, &step);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "display start failed: %s", esp_err_to_name(err));
+        if (!s_disp) no_display(step); /* a later step (LCD on, touch) leaves a working display behind */
     }
     return s_disp;
 }

@@ -54,6 +54,9 @@ const char *esp_err_to_name(esp_err_t e);
 #define MALLOC_CAP_DEFAULT 4
 #define heap_caps_malloc(s, c) malloc(s)
 #define heap_caps_free(p) free(p)
+#define MALLOC_CAP_8BIT 16
+#define heap_caps_get_free_size(c) (300u * 1024)       /* the installer logs internal RAM */
+#define heap_caps_get_largest_free_block(c) (100u * 1024)
 
 typedef enum { ESP_PARTITION_TYPE_APP = 0, ESP_PARTITION_TYPE_DATA = 1, ESP_PARTITION_TYPE_ANY = 0xff } esp_partition_type_t;
 enum {

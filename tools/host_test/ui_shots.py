@@ -2,7 +2,7 @@
 """Snapshots of the SD manager and HOME rendered on the PC: LVGL 9.3 with the firmware's own LVGL options
 (build/config/sdkconfig.h) and font patch, fonts, theme, the launcher's screen (l5_ui.c: views, top bar,
 layers, veil), SD view, file actions, dialogs and keyboard, on a folder that stands in for the card, HOME with
-slot states set in the program, CFG, PMAN (the device's partition table), OTA without Wi-Fi, WUI and Charge Mode
+slot states set in the program, CFG, PMAN (the device's partition table), OTA without Wi-Fi and Charge Mode
 (ui/shots.c lists the scenes). Shows the layout of the side panel and the Polish letters in names, paths, the
 clipboard line and the text viewer without flashing. run.py uses the same program for the idle test
 (dim, screen off, wake: shots --idle).

@@ -85,6 +85,8 @@ void l5_display_refresh_now(void) {}
 void l5_touch_trace_busy(const char *what, int64_t start_us) { (void)what, (void)start_us; }
 
 esp_err_t l5_config_remove(void) { return ESP_FAIL; }
+esp_err_t l5_config_replace(const char *src) { (void)src; return ESP_FAIL; }
+esp_err_t l5_config_load(l5_config_t *cfg) { l5_config_defaults(cfg); return ESP_ERR_NOT_FOUND; }
 
 bool l5_install_busy(void) { return false; }
 
@@ -160,6 +162,12 @@ const l5_slot_t *l5_slots_boot_app(void)
     return g_slots.boot >= 0 && g_slots.slot[g_slots.boot].used ? &g_slots.slot[g_slots.boot] : NULL;
 }
 void l5_slots_select(int index) { g_slots.boot = index; }
+int l5_slots_used(void)
+{
+    int n = 0;
+    for (int i = 0; i < g_slots.n; i++) n += g_slots.slot[i].used;
+    return n;
+}
 esp_err_t l5_slots_erase(int index, void (*progress)(int pct, void *user), void *user)
 {
     (void)progress, (void)user;

@@ -139,12 +139,14 @@ static const char *match_scheme(void)
     return s ? s->label : "Custom";
 }
 
-static int8_t nvs_boot_read(void)
+/* *saved: the key exists (-1 is a saved "none", e.g. after a scheme change erased every app) */
+static int8_t nvs_boot_read(bool *saved)
 {
     nvs_handle_t h;
     int8_t v = -1;
+    *saved = false;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
-        nvs_get_i8(h, "boot", &v);
+        *saved = nvs_get_i8(h, "boot", &v) == ESP_OK;
         nvs_close(h);
     }
     return v;
@@ -199,10 +201,12 @@ static void read_slot(int index)
     }
 }
 
-static int first_used(void)
+/* the first app the launcher installed itself (it has a registry entry): only such an app becomes the boot app
+   without the user picking it */
+static int first_installed(void)
 {
     for (int i = 0; i < g_slots.n; i++) {
-        if (g_slots.slot[i].used) {
+        if (g_slots.slot[i].used && g_slots.slot[i].src[0]) {
             return i;
         }
     }
@@ -228,18 +232,25 @@ void l5_slots_scan(void)
     g_slots.fat_kb = fat ? fat->size / 1024 : 0;
     g_slots.scheme = match_scheme();
 
-    /* S.boot: saved choice, else the slot otadata points at, else the first app (L5.syncSlots) */
-    int boot = nvs_boot_read();
+    /* S.boot: the saved choice; without one, the slot otadata points at, else the first app (L5.syncSlots), but only
+       among apps the launcher installed (registry entry). An app flashed by hand or left in flash from before the
+       launcher does not start by itself after the countdown: HOME says so until the user picks it. */
+    bool saved;
+    int boot = nvs_boot_read(&saved);
+    if (!saved) {
+        ESP_LOGW(TAG, "no boot choice in NVS (first start): apps in flash that the launcher did not install do not "
+                      "start by themselves");
+    }
     if (boot < 0 || boot >= g_slots.n || !g_slots.slot[boot].used) {
         boot = -1;
         const esp_partition_t *bp = esp_ota_get_boot_partition();
         for (int i = 0; bp && i < g_slots.n; i++) {
-            if (g_slots.slot[i].part == bp && g_slots.slot[i].used) {
+            if (g_slots.slot[i].part == bp && g_slots.slot[i].used && g_slots.slot[i].src[0]) {
                 boot = i;
             }
         }
         if (boot < 0) {
-            boot = first_used();
+            boot = first_installed();
         }
     }
     g_slots.boot = boot;
@@ -540,7 +551,7 @@ esp_err_t l5_slots_erase(int index, void (*progress)(int pct, void *user), void 
         clear_otadata();
     }
     if (g_slots.boot == index) {
-        g_slots.boot = first_used();
+        g_slots.boot = first_installed();
         nvs_boot_write((int8_t)g_slots.boot);
     }
     return ESP_OK;

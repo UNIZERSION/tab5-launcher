@@ -8,6 +8,7 @@
 #ifndef L5_CONFIG_PATH /* the UI snapshots on the PC point it at their own card folder */
 #define L5_CONFIG_PATH "/sdcard/config.conf"
 #endif
+#define L5_CONFIG_OLD L5_CONFIG_PATH ".old" /* the file being replaced, for the moment of the swap */
 
 typedef struct {
     uint8_t bright;       /* backlight %, 5..100 in 5% steps */
@@ -40,6 +41,9 @@ esp_err_t l5_config_load(l5_config_t *cfg);
 esp_err_t l5_config_save(const l5_config_t *cfg);
 /* deletes L5_CONFIG_PATH (SD manager), not while it is being read or written */
 esp_err_t l5_config_remove(void);
+/* the file src (on the card) takes the name L5_CONFIG_PATH, in place of the current one (SD manager: a copy of an old
+   config.conf renamed or pasted back). ESP_FAIL: nothing changed, both files are as they were. */
+esp_err_t l5_config_replace(const char *src);
 uint32_t l5_config_accent_hex(const l5_config_t *cfg);
 
 /* OTA favorites, kept in /config.conf as Launcher does: "favorite": [{name, fid, link}]

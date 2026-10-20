@@ -1,4 +1,4 @@
-/* Wi-Fi dialogs shared by the top bar and CFG (OTA / WUI later): L5.wifiMenu, L5.pickWifi and
+/* Wi-Fi dialogs shared by the top bar, CFG and OTA: L5.wifiMenu, L5.pickWifi and
    L5.connect from app.js, on top of l5_wifi.c (ESP32-C6 through ESP-Hosted). The dialogs are
    modal, so one pick runs at a time. */
 #include <stdio.h>
@@ -58,14 +58,44 @@ static void busy_open(const char *title, bool connect)
 
 /* ---------- L5.connect ---------- */
 
+/* The C6 runs another ESP-Hosted series than the launcher's host (the first Tab5 units: 1.4.1): what to flash, and
+   that the SD card works without it. */
+static void mismatch_info(const l5_wifi_status_t *st)
+{
+    char runs[48], title[48], body[560];
+    if (st->c6_fw[0] && strcmp(st->c6_fw, "unknown")) {
+        snprintf(runs, sizeof(runs), "runs ESP-Hosted %s", st->c6_fw);
+    } else {
+        strlcpy(runs, "did not report its ESP-Hosted version", sizeof(runs));
+    }
+    snprintf(title, sizeof(title), "ESP32-C6 needs ESP-Hosted %s", l5_wifi_host_series());
+    snprintf(body, sizeof(body),
+             "The ESP32-C6 (the Wi-Fi chip) %s. This launcher talks to ESP-Hosted %s.x only, so Wi-Fi and OTA stay "
+             "off.\n\nTo turn them on, flash the C6 with M5Burner: \"Tab5 ESP-Hosted Firmware Upgrade\" or \"Tab5 "
+             "ESP32-C6 Wi-Fi SDIO\", version %s. Then restart the Tab5.\n\nInstalling from the SD card works without "
+             "Wi-Fi: copy .bin files to the card and open the SD tab.",
+             runs, l5_wifi_host_series(), l5_wifi_host_version());
+    l5_info("WI-FI", title, body);
+}
+
 static void failed_info(void)
 {
     l5_wifi_status_t st;
     l5_wifi_get_status(&st);
-    char body[400];
+    if (st.c6_mismatch) {
+        mismatch_info(&st);
+        return;
+    }
+    char body[440];
     snprintf(body, sizeof(body), "%s\n\nLauncher: ESP-Hosted host %s. ESP32-C6: %s. Both sides need the same "
-             "ESP-Hosted major.minor version.", st.error, l5_wifi_host_version(), st.c6_fw[0] ? st.c6_fw : "not read");
+             "ESP-Hosted major.minor version.\n\nInstalling from the SD card works without Wi-Fi.", st.error,
+             l5_wifi_host_version(), st.c6_fw[0] ? st.c6_fw : "not read");
     l5_info("WI-FI", "ESP32-C6 not available", body);
+}
+
+void l5_wifi_why(void)
+{
+    failed_info();
 }
 
 static void connect_cb(l5_wifi_result_t res, const char *detail, void *user)

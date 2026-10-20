@@ -8,6 +8,7 @@
 #include "esp_heap_caps.h"
 #include "esp_image_format.h"
 #include "esp_log.h"
+#include "esp_memory_utils.h"
 #include "esp_partition.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -163,13 +164,57 @@ static esp_err_t flash_erase(uint32_t addr, uint32_t len)
     return esp_flash_erase_region(NULL, addr, len);
 }
 
+/* Data in PSRAM (no 32 KB block of internal RAM while ESP-Hosted runs): esp_flash_write() copies a buffer that is not
+   in internal RAM 32 bytes at a time (spi_flash esp_flash_api.c, temp_buf[8]), so it goes through this internal
+   bounce buffer instead when there is one. */
+static uint8_t *s_bounce;
+static uint32_t s_bounce_len;
+
 static esp_err_t flash_write(uint32_t addr, const void *buf, uint32_t len)
 {
     if (!range_ok(addr, len)) {
         ESP_LOGE(TAG, "refusing to write 0x%lx+0x%lx", (unsigned long)addr, (unsigned long)len);
         return ESP_ERR_INVALID_ARG;
     }
-    return esp_flash_write(NULL, buf, addr, len);
+    if (!s_bounce || esp_ptr_internal(buf)) return esp_flash_write(NULL, buf, addr, len);
+    const uint8_t *p = buf;
+    for (uint32_t done = 0; done < len;) {
+        uint32_t n = len - done < s_bounce_len ? len - done : s_bounce_len;
+        memcpy(s_bounce, p + done, n);
+        esp_err_t err = esp_flash_write(NULL, s_bounce, addr + done, n);
+        if (err != ESP_OK) return err;
+        done += n;
+    }
+    return ESP_OK;
+}
+
+/* the internal RAM at the start and the end of an install: what ESP-Hosted and the rest left for it */
+static void log_ram(const char *what)
+{
+    ESP_LOGI(TAG, "%s: internal RAM %u bytes free, largest block %u", what,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+}
+
+/* buf: CHUNK bytes, internal RAM when there is a block that big, else PSRAM and a bounce buffer as large as internal
+   RAM allows (16 KB down to 512 B) */
+static uint8_t *alloc_chunk(void)
+{
+    uint8_t *b = heap_caps_malloc(CHUNK, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    if (b) return b;
+    b = heap_caps_malloc(CHUNK, MALLOC_CAP_SPIRAM);
+    if (!b) return NULL;
+    for (uint32_t n = 16 * 1024; n >= 512 && !s_bounce; n /= 2) {
+        s_bounce = heap_caps_malloc(n, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (s_bounce) s_bounce_len = n;
+    }
+    if (s_bounce) {
+        ESP_LOGW(TAG, "no %s block of internal RAM: the data goes through PSRAM, the flash through %lu bytes of internal RAM",
+                 "32 KB", (unsigned long)s_bounce_len);
+    } else {
+        ESP_LOGW(TAG, "no internal RAM for the install: the flash is written from PSRAM in 32-byte steps (slow)");
+    }
+    return b;
 }
 
 /* ---------- progress ---------- */
@@ -216,6 +261,7 @@ static void log_rate(const char *what, uint32_t bytes, int64_t t0, int64_t t_fla
 esp_err_t l5_inst_run(const l5_inst_job_t *job, l5_inst_result_t *res)
 {
     memset(res, 0, sizeof(*res));
+    log_ram("install starts");
     const l5_fw_t *fw = job->fw;
     esp_err_t err = ESP_ERR_INVALID_ARG;
     uint8_t *buf = NULL, *head = NULL;
@@ -263,8 +309,9 @@ esp_err_t l5_inst_run(const l5_inst_job_t *job, l5_inst_result_t *res)
         piece[np++] = (piece_t){.url = url, .src_off = p->src_offset, .len = p->copy_size, .addr = q->offset,
                                 .size = q->size, .label = p->label, .subtype = p->subtype};
     }
-    buf = heap_caps_malloc(CHUNK, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    buf = alloc_chunk();
     head = heap_caps_malloc(SECTOR, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    if (!head) head = heap_caps_malloc(SECTOR, MALLOC_CAP_SPIRAM); /* written through the bounce buffer too */
     if (!buf || !head) {
         say(res->text, sizeof(res->text), "Not enough memory for the install.");
         err = ESP_ERR_NO_MEM;
@@ -488,6 +535,10 @@ out:
     }
     heap_caps_free(buf);
     heap_caps_free(head);
+    heap_caps_free(s_bounce);
+    s_bounce = NULL;
+    s_bounce_len = 0;
+    log_ram("install ends");
     return err;
 }
 
