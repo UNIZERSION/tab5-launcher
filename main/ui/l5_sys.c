@@ -18,6 +18,7 @@ static const char *TAG = "l5_sys";
 static lv_timer_t *s_boot_timer;
 static lv_obj_t *s_cd_bar, *s_cd_num;
 static uint32_t s_cd_start;
+static bool s_bootscreen; /* the bootscreen is up: any key of the Tab5 Keyboard enters the launcher */
 
 static void stop_boot_timer(void)
 {
@@ -31,6 +32,7 @@ static void stop_boot_timer(void)
 static lv_obj_t *sys_show(lv_color_t top, lv_color_t bottom)
 {
     stop_boot_timer();
+    s_bootscreen = false;
     l5_dialogs_close_all();
     lv_obj_t *sys = l5_ui_sys();
     lv_obj_clean(sys);
@@ -53,6 +55,7 @@ lv_obj_t *l5_sys_show(lv_color_t top, lv_color_t bottom)
 void l5_sys_hide(void)
 {
     stop_boot_timer();
+    s_bootscreen = false;
     lv_obj_clean(l5_ui_sys());
     l5_ui_covered(false);
     lv_display_trigger_activity(NULL);
@@ -143,6 +146,7 @@ void l5_boot_screen(void)
     l5_ui_set_booted(false);
     const l5_slot_t *app = l5_slots_boot_app();
     lv_obj_t *el = sys_show(lv_color_hex(0x202227), lv_color_hex(0x0b0c0e)); /* .boot */
+    s_bootscreen = true;
 
     /* .l: logo, tag, app, countdown */
     lv_obj_t *l = col_box(el);
@@ -286,6 +290,19 @@ void l5_boot_screen(void)
     s_boot_timer = lv_timer_create(countdown_cb, 50, NULL);
     l5_display_mark_built();
     l5_display_refresh_now();
+}
+
+/* a key of the Tab5 Keyboard while #sys shows a screen (l5_keys.c): on the bootscreen any key is ENTER LAUNCHER,
+   another screen (Charge Mode) gets it as l5_key_event() */
+bool l5_sys_key(const l5_key_t *k)
+{
+    if (s_bootscreen) {
+        enter_launcher();
+        return true;
+    }
+    lv_obj_t *el = lv_obj_get_child(l5_ui_sys(), 0);
+    if (el) lv_obj_send_event(el, l5_key_event(), (void *)k);
+    return el != NULL;
 }
 
 /* ---------- hand-over to the selected app (L5.bootApp) ---------- */

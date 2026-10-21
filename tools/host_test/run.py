@@ -13,7 +13,9 @@ and with the launcher's patched copy (all must match). ui/shots.c --idle runs l5
 dim, screen off (backlight 0, drawing paused), wake by a tap, by a dialog and by a system screen; ui/shots.c
 --taps checks what taps at the edges of the top bar's keys, in the gaps and around Wi-Fi / power hit, then Charge
 Mode's state line on a run of current readings (l5_board.h l5_charge_next) and that HOME's redraw bench (compiled
-here with L5_HOME_BENCH=1, off in the firmware) puts the view back. test_guard.c
+here with L5_HOME_BENCH=1, off in the firmware) puts the view back; ui/shots.c --keys types on a stand-in M5Stack Tab5
+Keyboard: tabs, waking, dialogs, menus, the text viewer, progress, the text field, HOME, SD, OTA, CFG, Charge Mode
+(l5_keys.c and the handlers, as in the original build of 20.10.2026). test_guard.c
 runs the guard's decision for every reset reason and state and the boot loops through it (OrcSDR's clean restart
 through the LP watchdog, crash loops, brown-out loops through the launcher). test_charger.c runs the charger steps
 of main/l5_pi4io.h (CHG_EN high, CHG_STAT an input) on a model of the 0x44 IO expander from every state of the two
@@ -26,7 +28,8 @@ build of the firmware (build/tab5_launcher.bin, build/bootloader/bootloader.bin,
   python tools/host_test/run.py --scan firmware.bin ...   (only the old-hardware rule on these images)
   python tools/host_test/run.py --files                    (only the file operations)
   python tools/host_test/run.py --fonts                    (only the font decompression with two threads)
-  python tools/host_test/run.py --idle                     (only dim / screen off / wake, top bar taps, charge state)
+  python tools/host_test/run.py --idle                     (only dim / screen off / wake, top bar taps, charge state,
+                                                            the Tab5 Keyboard's keys)
   python tools/host_test/run.py --guard                    (only the boot-loop guard)
   python tools/host_test/run.py --charger                  (only the charger pins of the IO expander)
 """
@@ -85,10 +88,12 @@ def charger_test(cc, work):
 
 
 def idle_test(cc, work):
-    """0 when dim, screen off and wake behave as l5_ui.c should and taps reach the top bar's keys and buttons"""
+    """0 when dim, screen off and wake behave as l5_ui.c should, taps reach the top bar's keys and buttons and the
+    Tab5 Keyboard's keys do what they did in the build of 20.10.2026"""
     exe = ui_shots.build(cc, work)
     r = subprocess.call([exe, '--idle'], cwd=work)
-    return subprocess.call([exe, '--taps'], cwd=work) or r
+    r = subprocess.call([exe, '--taps'], cwd=work) or r
+    return subprocess.call([exe, '--keys'], cwd=work) or r
 
 
 def main():

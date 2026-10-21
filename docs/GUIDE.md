@@ -317,11 +317,25 @@ The keyboard opens for the Wi-Fi password, the OTA search and ADD LINK (name and
 
 **M5Stack Tab5 Keyboard**
 
-With the M5Stack Tab5 Keyboard plugged into the side port, a text field opens without the on-screen keys, with the line "KEYBOARD · ENTER = OK · ESC = CANCEL · TAP THE FIELD FOR ON-SCREEN KEYS".
+With the M5Stack Tab5 Keyboard plugged into the side port, the whole launcher works from its keys, as in the build of 2026-10-20. A frame in the accent color shows the menu item, button or CFG row that **Enter** takes.
 
-- Letters, digits, symbols and SPACE type into the field (with Shift and Aa as on the keyboard's legends), Backspace deletes, **Enter** is OK and **Esc** is CANCEL.
-- A tap on the field brings back the on-screen keys.
-- The keyboard can be plugged in or pulled out at any time: the launcher looks for it once a second. Before an app starts, the keyboard gets back the mode it had.
+| Where | Keys |
+|---|---|
+| Everywhere | **Tab** / **Shift+Tab** or **Ctrl+→** / **Ctrl+←**: next / previous tab (PMAN works only by touch). On a dimmed or dark screen the first key only wakes it, like the first tap. |
+| Boot screen | any key = ENTER LAUNCHER |
+| HOME | one app: **Enter** = BOOT (on the empty card: the SD tab). Several apps: **← ↑** / **→ ↓** choose the previous / next installed app as the one that starts after the boot screen, **Enter** = BOOT |
+| SD | **↑ ↓**, **Home / End**, **PgUp / PgDn** (8 rows) select. **Enter**: a folder opens, a .bin that the side panel offers to install = INSTALL, a text file = VIEW. **Esc** or **Backspace** = UP, **Delete** = DELETE, **Ctrl+C** COPY, **Ctrl+V** PASTE, **Ctrl+R** RENAME, **Ctrl+N** NEW FOLDER |
+| OTA | **↑ ↓**, **Home / End**, **PgUp / PgDn** (6 rows) select, **Enter** = INSTALL, **/** or **Ctrl+F** = search. Without Wi-Fi: **Enter** = CONNECT (after a Wi-Fi failure WHY NO WI-FI; nothing while it connects) |
+| CFG | **↑ ↓**, **Home / End** move the frame over the rows of the three columns. **Enter** = a tap on the row. **← →** = − / + on the rows with steps, previous / next UI color |
+| Menus | **↑ ↓**, **Tab / Shift+Tab**, **Home / End** move the frame, **Enter** picks, **Esc** closes |
+| Dialogs with buttons | **← →** or **Tab / Shift+Tab** move the frame over the buttons. **Enter** = the framed button, without a frame the main (right) one; a greyed-out button does nothing. **Esc** = the cancel button, if the dialog has one. **↑ ↓ PgUp PgDn Home End** scroll a long text |
+| Progress | **Esc** = CANCEL |
+| VIEW (text) | **Enter** / **Esc** close it, the arrows, **PgUp / PgDn** and **Home / End** scroll |
+| Text field | opens in the middle of the screen without the on-screen keys, with the line "KEYBOARD · ENTER = OK · ESC = CANCEL · TAP THE FIELD FOR ON-SCREEN KEYS" and CANCEL / OK. Characters type (with Shift and Aa as on the keyboard's legends), **Backspace** and **Delete** delete the last character, **Ctrl+U** = CLEAR, **Enter** = OK, **Esc** = CANCEL. A tap on the field brings back the on-screen keys. |
+| Charge Mode | **Enter** / **Esc** back to the launcher |
+
+- Held keys repeat (after 0.45 s, then every 60 ms, at most 10 s): characters, Backspace, Delete, arrows, Home / End, PgUp / PgDn; not Enter, Esc, Tab or keys with Ctrl / Alt.
+- The keyboard can be plugged in or pulled out at any time: the launcher looks for it every 2 s. Before an app starts, the launcher releases the keyboard's bus; the keyboard stays in HID mode.
 
 ## Safeguards
 
@@ -396,7 +410,7 @@ Every time it starts, the launcher turns on the battery charger (RESET turns it 
 - **Wi-Fi**: no access point (AP) mode, no switch between the internal and external (MMCX) antenna, and no ESP32-C6 firmware update.
 - **PMAN**: OPTIMIZE FLASH erases apps instead of moving them. For data partitions (SPIFFS, FAT), USED shows only EMPTY / IN USE, without percentages. PMAN does not change tables that do not follow the launcher's rules (UNMANAGED), and with flash encryption enabled, the launcher refuses to change the table.
 - **Installing**: after you change the scheme with the USE ‹scheme› button in the "App slot too small" dialog, you have to pick the file again after the restart. AUTO PARTITION in the check dialog installs without this interruption.
-- **Keyboard**: no "€" character and no pasting. The M5Stack Tab5 Keyboard types only into text fields (no shortcuts, arrows or Tab).
+- **Keyboard**: no "€" character and no pasting. On the M5Stack Tab5 Keyboard the text field has no cursor to move (the arrows do nothing there) and PMAN has no keys.
 
 **Known bugs**
 
@@ -404,7 +418,7 @@ No known bugs so far.
 
 **Not yet tested on the device**
 
-These features are in the launcher but have not been tested on the Tab5 yet: resuming an OTA download after the connection drops (including RETRY), CANCEL during a download, \[UPDATE ALL\], favorites and ADD LINK, the APP ONLY / APP + DATA choice and Avoid SPIFFS. In the SD tab: copy and paste, rename, new folder and text preview. In the boot-loop guard: BOOT AGAIN and RESET while the "… was stopped" dialog is open. Restored from the build of 2026-10-20 and not tested on the device yet: the M5Stack Tab5 Keyboard, putting config.conf back, WHY NO WI-FI, the NO DISPLAY stop, apps that wait until they are chosen, installing with little internal RAM.
+These features are in the launcher but have not been tested on the Tab5 yet: resuming an OTA download after the connection drops (including RETRY), CANCEL during a download, \[UPDATE ALL\], favorites and ADD LINK, the APP ONLY / APP + DATA choice and Avoid SPIFFS. In the SD tab: copy and paste, rename, new folder and text preview. In the boot-loop guard: BOOT AGAIN and RESET while the "… was stopped" dialog is open. Restored from the build of 2026-10-20 and not tested on the device yet: the M5Stack Tab5 Keyboard and its keys in the whole launcher, putting config.conf back, WHY NO WI-FI, the NO DISPLAY stop, apps that wait until they are chosen, installing with little internal RAM.
 
 **What comes next**
 

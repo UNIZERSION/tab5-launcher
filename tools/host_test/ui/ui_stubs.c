@@ -49,7 +49,8 @@ BaseType_t xTaskCreatePinnedToCore(void (*fn)(void *), const char *name, uint32_
                                    TaskHandle_t *handle, int core)
 {
     (void)stack, (void)prio, (void)handle, (void)core;
-    if (!strcmp(name, "l5_cfg_save") || !strcmp(name, "l5_ota")) return pdFAIL; /* they wait for work forever */
+    if (!strcmp(name, "l5_cfg_save")) return pdFAIL; /* waits for work forever: config.conf is written at once */
+    if (!strcmp(name, "l5_ota")) return pdPASS; /* the catalog worker waits forever: not run, OTA lists only favorites */
     fn(arg); /* the worker runs to its end, its result dialog included */
     return pdPASS;
 }
@@ -130,6 +131,13 @@ void l5_sys_hide(void)
     lv_obj_clean(l5_ui_sys());
     l5_ui_covered(false);
 }
+/* as l5_sys.c without the bootscreen: the key goes to the system screen (Charge Mode) */
+bool l5_sys_key(const l5_key_t *k)
+{
+    lv_obj_t *el = lv_obj_get_child(l5_ui_sys(), 0);
+    if (el) lv_obj_send_event(el, l5_key_event(), (void *)k);
+    return el != NULL;
+}
 void l5_install_fw(l5_fw_t *fw, const char *name, const char *author, const char *src)
 {
     (void)name, (void)author, (void)src;
@@ -161,7 +169,12 @@ const l5_slot_t *l5_slots_boot_app(void)
 {
     return g_slots.boot >= 0 && g_slots.slot[g_slots.boot].used ? &g_slots.slot[g_slots.boot] : NULL;
 }
-void l5_slots_select(int index) { g_slots.boot = index; }
+int shots_selects; /* l5_slots_select() calls: the boot choice saved in NVS */
+void l5_slots_select(int index)
+{
+    g_slots.boot = index;
+    shots_selects++;
+}
 int l5_slots_used(void)
 {
     int n = 0;
@@ -174,7 +187,8 @@ esp_err_t l5_slots_erase(int index, void (*progress)(int pct, void *user), void 
     memset(&g_slots.slot[index], 0, sizeof(g_slots.slot[index]));
     return ESP_OK;
 }
-void l5_boot_app(void) {}
+int shots_boots; /* l5_boot_app() calls: BOOT */
+void l5_boot_app(void) { shots_boots++; }
 
 int l5_slots_list(char *out, size_t len)
 {

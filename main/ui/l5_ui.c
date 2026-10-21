@@ -57,6 +57,11 @@ static void set_veil(void)
     }
 }
 
+bool l5_ui_asleep(void)
+{
+    return s_dimmed || s_off;
+}
+
 void l5_ui_wake(void)
 {
     if (s_dimmed || s_off) {

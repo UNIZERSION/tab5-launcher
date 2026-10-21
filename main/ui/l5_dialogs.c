@@ -1,10 +1,16 @@
-/* ui.js modal / menu / progress / toast. Overlays live in #layer so they follow rotation. */
+/* ui.js modal / menu / progress / toast. Overlays live in #layer so they follow rotation.
+   Keys of the Tab5 Keyboard (l5_keys.c sends them to the topmost overlay as l5_key_event()):
+   - menu: Up / Down, Tab / Shift+Tab, Home / End move the focus ring, Enter picks, Esc closes;
+   - modal: Left / Right, Tab / Shift+Tab move between the actions, Enter takes the focused one (none focused: the
+     primary, the last), Esc the cancel action, Up / Down / PgUp / PgDn / Home / End scroll a long text;
+   - text viewer: Enter / Esc close, the rest scrolls; progress: Esc is CANCEL. */
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include "l5_ui.h"
 
 #define MAX_ITEMS 16 /* the list scrolls inside the 620 px modal */
+#define MAX_BTNS 4
 
 typedef struct {
     l5_menu_cb_t menu_cb;
@@ -15,7 +21,35 @@ typedef struct {
     int dismiss_index;    /* action taken when the scrim is tapped */
     int ok_index;
     bool dismissable;
+    lv_obj_t *list;          /* menu: the items */
+    lv_obj_t *body;          /* modal: the text, scrolls when long */
+    lv_obj_t *btn[MAX_BTNS]; /* modal: the actions in order, the last one primary */
+    int nbtn;
+    int focus;               /* keyboard: focused item or action, -1 = none yet */
+    int cancel_index;        /* Esc: the dismiss action, else the one labelled CANCEL; -1 = none */
 } dlg_t;
+
+/* LV_STATE_FOCUS_KEY on objs[focus] only (L5S.focus draws the ring), scrolled into view */
+static void focus_paint(lv_obj_t *const *objs, int n, int focus)
+{
+    for (int i = 0; i < n; i++) lv_obj_set_state(objs[i], LV_STATE_FOCUS_KEY, i == focus);
+    if (focus >= 0 && focus < n) lv_obj_scroll_to_view(objs[focus], LV_ANIM_OFF);
+}
+
+/* a text that scrolls: 48 px a line, a page is its height less 40 px */
+static void scroll_key(lv_obj_t *obj, const l5_key_t *k)
+{
+    int32_t h = lv_obj_get_height(obj);
+    switch (k->kind) {
+    case L5_KEY_UP: lv_obj_scroll_by_bounded(obj, 0, 48, LV_ANIM_OFF); break;
+    case L5_KEY_DOWN: lv_obj_scroll_by_bounded(obj, 0, -48, LV_ANIM_OFF); break;
+    case L5_KEY_PGUP: lv_obj_scroll_by_bounded(obj, 0, h - 40, LV_ANIM_OFF); break;
+    case L5_KEY_PGDN: lv_obj_scroll_by_bounded(obj, 0, 40 - h, LV_ANIM_OFF); break;
+    case L5_KEY_HOME: lv_obj_scroll_to_y(obj, 0, LV_ANIM_OFF); break;
+    case L5_KEY_END: lv_obj_scroll_to_y(obj, LV_COORD_MAX, LV_ANIM_OFF); break;
+    default: break;
+    }
+}
 
 struct l5_progress {
     lv_obj_t *scrim, *bar, *label, *pct, *cancel_btn;
@@ -117,14 +151,51 @@ static void menu_scrim_cb(lv_event_t *e)
     }
 }
 
+static void menu_key_cb(lv_event_t *e)
+{
+    lv_obj_t *s = lv_event_get_current_target(e);
+    dlg_t *d = lv_obj_get_user_data(s);
+    const l5_key_t *k = lv_event_get_param(e);
+    lv_obj_t *items[MAX_ITEMS];
+    int n = (int)lv_obj_get_child_count(d->list);
+    if (n > MAX_ITEMS) n = MAX_ITEMS;
+    for (int i = 0; i < n; i++) items[i] = lv_obj_get_child(d->list, i);
+    int f = d->focus;
+    bool up = k->kind == L5_KEY_UP || (k->kind == L5_KEY_TAB && k->shift);
+    switch (k->kind) {
+    case L5_KEY_TAB:
+        if (k->ctrl) return;
+        /* fall through */
+    case L5_KEY_UP:
+    case L5_KEY_DOWN:
+        if (up) {
+            f = f < 0 ? n - 1 : f > 0 ? f - 1 : 0;
+        } else {
+            f = f < 0 ? 0 : f + 1 < n ? f + 1 : n - 1;
+        }
+        break;
+    case L5_KEY_HOME: f = 0; break;
+    case L5_KEY_END: f = n - 1; break;
+    case L5_KEY_ENTER:
+        if (f >= 0 && f < n) menu_close(s, d->ids[(int)(intptr_t)lv_obj_get_user_data(items[f])]);
+        return;
+    case L5_KEY_ESC: menu_close(s, NULL); return;
+    default: return;
+    }
+    d->focus = f;
+    focus_paint(items, n, f);
+}
+
 void l5_menu(const char *kind, const char *title, const l5_menu_item_t *items, int n, l5_menu_cb_t cb, void *user)
 {
     dlg_t *d = lv_zalloc(sizeof(dlg_t));
     d->menu_cb = cb;
     d->user = user;
+    d->focus = -1;
     lv_obj_t *s = scrim_create(d);
     lv_obj_set_user_data(s, d);
     lv_obj_add_event_cb(s, menu_scrim_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(s, menu_key_cb, l5_key_event(), NULL);
     lv_obj_t *m = modal_create(s, 520, kind, title);
     lv_obj_set_style_pad_bottom(lv_obj_get_child(m, -1), 12, 0);
 
@@ -136,6 +207,7 @@ void l5_menu(const char *kind, const char *title, const l5_menu_item_t *items, i
     lv_obj_set_style_pad_top(list, 4, 0);
     lv_obj_set_style_pad_bottom(list, 14, 0);
     lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    d->list = list;
     int slot = 0;
     for (int i = 0; i < n && slot < MAX_ITEMS; i++) {
         if (!items[i].id) {
@@ -146,6 +218,7 @@ void l5_menu(const char *kind, const char *title, const l5_menu_item_t *items, i
         lv_obj_remove_style_all(b);
         lv_obj_add_style(b, &L5S.menu_btn, 0);
         lv_obj_add_style(b, &L5S.menu_btn_pr, LV_STATE_PRESSED);
+        lv_obj_add_style(b, &L5S.focus, LV_STATE_FOCUS_KEY);
         lv_color_t c = items[i].danger ? L5_DANGER : L5_ON_PANEL;
         lv_obj_set_style_text_color(b, c, 0);
         l5_icon(b, &l5_icon_22, items[i].danger ? L5_DANGER : L5_ON_PANEL_MUTED, items[i].icon ? items[i].icon : L5_ICON_CHEV);
@@ -191,6 +264,34 @@ static void choose_scrim_cb(lv_event_t *e)
     }
 }
 
+static void modal_key_cb(lv_event_t *e)
+{
+    lv_obj_t *s = lv_event_get_current_target(e);
+    dlg_t *d = lv_obj_get_user_data(s);
+    const l5_key_t *k = lv_event_get_param(e);
+    int dir = 0;
+    if (k->kind == L5_KEY_LEFT || k->kind == L5_KEY_RIGHT) {
+        dir = k->kind == L5_KEY_LEFT ? -1 : 1;
+    } else if (k->kind == L5_KEY_TAB && !k->ctrl) {
+        dir = k->shift ? -1 : 1;
+    } else if (k->kind == L5_KEY_ENTER) {
+        int i = d->focus >= 0 ? d->focus : d->nbtn - 1; /* nothing focused yet: the primary action */
+        if (!lv_obj_has_state(d->btn[i], LV_STATE_DISABLED)) choose_close(s, i);
+        return;
+    } else if (k->kind == L5_KEY_ESC && d->cancel_index >= 0) {
+        choose_close(s, d->cancel_index);
+        return;
+    }
+    if (!dir) {
+        if (d->body) scroll_key(d->body, k);
+        return;
+    }
+    int f = (d->focus >= 0 ? d->focus : d->nbtn - 1) + dir; /* the ring starts from the primary action */
+    f = f < 0 ? 0 : f >= d->nbtn ? d->nbtn - 1 : f;
+    d->focus = f;
+    focus_paint(d->btn, d->nbtn, f);
+}
+
 static dlg_t *modal_n(const char *kind, const char *title, const char *body, const char *const *labels, int n,
                       const char *icon, int dismiss, l5_choose_cb_t cb, void *user)
 {
@@ -199,9 +300,12 @@ static dlg_t *modal_n(const char *kind, const char *title, const char *body, con
     d->user = user;
     d->dismissable = dismiss >= 0;
     d->dismiss_index = dismiss;
+    d->focus = -1;
+    d->cancel_index = dismiss; /* Esc does what a tap beside the dialog does, else CANCEL (below) */
     lv_obj_t *s = scrim_create(d);
     lv_obj_set_user_data(s, d);
     lv_obj_add_event_cb(s, choose_scrim_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(s, modal_key_cb, l5_key_event(), NULL);
     lv_obj_t *m = modal_create(s, n > 2 ? 720 : 600, kind, title);
 
     lv_obj_t *wrap = l5_box(m); /* long bodies (install checks) scroll, the actions stay */
@@ -209,6 +313,7 @@ static dlg_t *modal_n(const char *kind, const char *title, const char *body, con
     lv_obj_set_style_max_height(wrap, 380, 0);
     lv_obj_add_flag(wrap, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(wrap, LV_DIR_VER);
+    d->body = wrap;
     lv_obj_t *mb = l5_label(wrap, &l5_chakra_r17, L5_ON_PANEL_MUTED, body);
     lv_obj_set_width(mb, lv_pct(100));
     lv_label_set_long_mode(mb, LV_LABEL_LONG_WRAP);
@@ -230,6 +335,9 @@ static dlg_t *modal_n(const char *kind, const char *title, const char *body, con
         lv_obj_set_style_min_width(b, n > 2 ? 150 : 170, 0);
         lv_obj_set_user_data(b, (void *)(intptr_t)i);
         lv_obj_add_event_cb(b, choose_btn_cb, LV_EVENT_CLICKED, s);
+        lv_obj_add_style(b, &L5S.focus, LV_STATE_FOCUS_KEY);
+        if (i < MAX_BTNS) d->btn[d->nbtn++] = b;
+        if (d->cancel_index < 0 && n != 1 && strcmp(labels[i], "CANCEL") == 0) d->cancel_index = i;
     }
     return d;
 }
@@ -249,6 +357,7 @@ static void modal_actions(const char *kind, const char *title, const char *body,
                        NULL, user);
     d->confirm_cb = cb;
     d->ok_index = n - 1;
+    if (cancel) d->cancel_index = 0; /* Esc: the cancel action, whatever it is called */
 }
 
 void l5_confirm(const char *kind, const char *title, const char *body, const char *ok, bool danger,
@@ -273,6 +382,7 @@ void l5_ask(const char *kind, const char *title, const char *body, const char *c
 typedef struct {
     char *text;
     void (*free_fn)(void *);
+    lv_obj_t *body; /* the keys scroll it */
 } text_dlg_t;
 
 static void text_deleted_cb(lv_event_t *e)
@@ -290,6 +400,17 @@ static void text_close_cb(lv_event_t *e)
     }
 }
 
+static void text_key_cb(lv_event_t *e)
+{
+    text_dlg_t *t = lv_event_get_user_data(e);
+    const l5_key_t *k = lv_event_get_param(e);
+    if (k->kind == L5_KEY_ENTER || k->kind == L5_KEY_ESC) {
+        lv_obj_delete(lv_event_get_current_target(e)); /* CLOSE */
+    } else if (t->body) {
+        scroll_key(t->body, k);
+    }
+}
+
 void l5_text_dialog(const char *title, const char *note, char *text, uint32_t pieces, void (*free_fn)(void *))
 {
     text_dlg_t *t = lv_zalloc(sizeof(text_dlg_t));
@@ -298,6 +419,7 @@ void l5_text_dialog(const char *title, const char *note, char *text, uint32_t pi
     lv_obj_t *s = scrim_create(NULL);
     lv_obj_add_event_cb(s, text_deleted_cb, LV_EVENT_DELETE, t);
     lv_obj_add_event_cb(s, text_close_cb, LV_EVENT_CLICKED, s);
+    lv_obj_add_event_cb(s, text_key_cb, l5_key_event(), t);
     lv_obj_t *m = modal_create(s, 1040, "VIEW", title);
     lv_obj_set_style_max_height(m, 680, 0);
     lv_obj_t *mh = lv_obj_get_child(m, 0); /* the note at the end of the kind row */
@@ -323,6 +445,7 @@ void l5_text_dialog(const char *title, const char *note, char *text, uint32_t pi
     lv_obj_set_style_pad_row(body, 3, 0); /* the line space between two pieces too */
     lv_obj_add_flag(body, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE); /* clickable: drags on the text scroll */
     lv_obj_set_scroll_dir(body, LV_DIR_VER);
+    t->body = body;
     lv_obj_set_style_bg_opa(body, LV_OPA_COVER, LV_PART_SCROLLBAR);
     lv_obj_set_style_bg_color(body, L5P.accent, LV_PART_SCROLLBAR);
     lv_obj_set_style_width(body, 5, LV_PART_SCROLLBAR);
@@ -358,11 +481,33 @@ static void progress_deleted_cb(lv_event_t *e)
     p->scrim = NULL; /* gone with the layer (l5_dialogs_close_all): the owner still calls close */
 }
 
+static void progress_cancel(l5_progress_t *p)
+{
+    if (p->cancel) *p->cancel = true;
+    lv_obj_add_state(p->cancel_btn, LV_STATE_DISABLED);
+    lv_label_set_text(lv_obj_get_child(p->cancel_btn, -1), "CANCELLING\xE2\x80\xA6");
+}
+
+static void progress_key_cb(lv_event_t *e)
+{
+    l5_progress_t *p = lv_event_get_user_data(e);
+    const l5_key_t *k = lv_event_get_param(e);
+    if (k->kind == L5_KEY_ESC && p->cancel_btn && !lv_obj_has_state(p->cancel_btn, LV_STATE_DISABLED)) {
+        progress_cancel(p);
+    }
+}
+
+static void progress_cancel_cb(lv_event_t *e)
+{
+    progress_cancel(lv_event_get_user_data(e));
+}
+
 l5_progress_t *l5_progress_open(const char *kind, const char *title)
 {
     l5_progress_t *p = lv_zalloc(sizeof(l5_progress_t));
     p->scrim = scrim_create(NULL);
     lv_obj_add_event_cb(p->scrim, progress_deleted_cb, LV_EVENT_DELETE, p);
+    lv_obj_add_event_cb(p->scrim, progress_key_cb, l5_key_event(), p);
     lv_obj_t *m = modal_create(p->scrim, 600, kind, title);
 
     lv_obj_t *wrap = l5_box(m); /* .prog margin 18px 28px 6px */
@@ -405,14 +550,6 @@ void l5_progress_set(l5_progress_t *p, int pct, const char *label)
     if (label) {
         lv_label_set_text(p->label, label);
     }
-}
-
-static void progress_cancel_cb(lv_event_t *e)
-{
-    l5_progress_t *p = lv_event_get_user_data(e);
-    if (p->cancel) *p->cancel = true;
-    lv_obj_add_state(p->cancel_btn, LV_STATE_DISABLED);
-    lv_label_set_text(lv_obj_get_child(p->cancel_btn, -1), "CANCELLING\xE2\x80\xA6");
 }
 
 void l5_progress_cancelable(l5_progress_t *p, volatile bool *flag)

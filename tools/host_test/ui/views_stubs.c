@@ -241,14 +241,26 @@ const char *l5_wifi_summary(char *buf, size_t len)
 }
 const char *l5_wifi_host_version(void) { return "2.12.6"; }
 void l5_wifi_forget_all(void) {}
-void l5_wifi_pick(void) {}
-void l5_wifi_why(void) {}
+int shots_wifi_picks, shots_wifi_whys; /* CONNECT / WHY NO WI-FI */
+void l5_wifi_pick(void) { shots_wifi_picks++; }
+void l5_wifi_why(void) { shots_wifi_whys++; }
 const char *l5_wifi_host_series(void) { return "2.12"; }
 
-/* no Tab5 Keyboard on the PC: the on-screen keyboard shows its keys */
-bool l5_kbd_present(void) { return false; }
-bool l5_kbd_get(l5_kbd_key_t *key) { (void)key; return false; }
-void l5_kbd_flush(void) {}
+/* the Tab5 Keyboard on the PC: absent unless shots --keys plugs it in and types (shots_kbd_push) */
+bool shots_kbd_present;
+static l5_key_t s_keys[64];
+static int s_key_head, s_key_tail;
+void shots_kbd_push(l5_key_t k)
+{
+    s_keys[s_key_tail++ % 64] = k;
+}
+bool l5_kbd_present(void) { return shots_kbd_present; }
+bool l5_kbd_get(l5_key_t *key)
+{
+    if (s_key_head == s_key_tail) return false;
+    *key = s_keys[s_key_head++ % 64];
+    return true;
+}
 
 esp_err_t l5_net_open(const char *url, uint32_t offset, uint32_t len, volatile bool *cancel, l5_net_stream_t **out,
                       int64_t *length, int64_t *total, l5_net_err_t *e)
@@ -294,9 +306,15 @@ void l5_config_defaults(l5_config_t *cfg)
 }
 esp_err_t l5_config_save(const l5_config_t *cfg) { (void)cfg; return ESP_OK; }
 uint32_t l5_config_accent_hex(const l5_config_t *cfg) { (void)cfg; return 0xe3171f; }
+int shots_favs; /* catalog favorites in config.conf (shots --keys: OTA's FAVORITES list) */
 esp_err_t l5_favs_load(l5_favs_t *out)
 {
     memset(out, 0, sizeof(*out));
+    for (int i = 0; i < shots_favs && i < L5_FAV_MAX; i++) {
+        snprintf(out->item[i].name, sizeof(out->item[i].name), "Favorite %d", i);
+        snprintf(out->item[i].fid, sizeof(out->item[i].fid), "fid%d", i);
+    }
+    out->n = shots_favs;
     return ESP_OK;
 }
 esp_err_t l5_favs_save(const l5_favs_t *favs) { (void)favs; return ESP_OK; }

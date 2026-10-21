@@ -91,6 +91,7 @@ static struct {
     } names[NAMES]; /* fid -> name of every entry seen, for FAVORITES / DOWNLOADED rows */
     int nnames;
     char keys[MAX_ROWS][40];
+    int nrows;     /* rows in the list, keys[] in their order */
     lv_obj_t *main, *list, *side;
     bool job;      /* prepare / TO SD / UPDATE ALL running */
 } O = {.page = 1};
@@ -1020,6 +1021,16 @@ static void row_cb(lv_event_t *e)
     build_side();
 }
 
+/* the keyboard's selection: the row as a tap marks it, scrolled into view */
+static void select_row(int i)
+{
+    if (!O.list || i < 0 || i >= O.nrows) return;
+    if (strcmp(O.sel, O.keys[i])) select_key(O.keys[i]);
+    for (int k = 0; k < O.nrows; k++) lv_obj_set_state(lv_obj_get_child(O.list, k), LV_STATE_CHECKED, k == i);
+    lv_obj_scroll_to_view(lv_obj_get_child(O.list, i), LV_ANIM_OFF);
+    build_side();
+}
+
 static void wifi_cb(lv_event_t *e)
 {
     (void)e;
@@ -1195,6 +1206,7 @@ static void build_list(void)
             row(n++, O.dl[i].fid, nm ? nm : O.dl[i].fid, sub, meta, false, fav_index(O.dl[i].fid) >= 0, false);
         }
     }
+    O.nrows = n;
     for (int i = 0; i < n; i++) {
         if (!strcmp(O.keys[i], O.sel)) sel = lv_obj_get_child(O.list, i);
     }
@@ -1364,6 +1376,7 @@ static void main_deleted_cb(lv_event_t *e)
 {
     (void)e;
     O.main = O.list = O.side = NULL;
+    O.nrows = 0;
 }
 
 static void no_wifi(lv_obj_t *m, lv_obj_t *s, const l5_wifi_status_t *st)
@@ -1398,6 +1411,45 @@ static void no_wifi(lv_obj_t *m, lv_obj_t *s, const l5_wifi_status_t *st)
     l5w_kv(g, "DEVICE", "tab5", false);
     l5w_kv(g, "PAGING", "100 per page", false);
     l5w_kv(g, "OFFLINE", "Files saved with TO SD install from the SD tab.", false);
+}
+
+/* keys of the Tab5 Keyboard (l5_keys.c). The list: Up / Down, Home / End, PgUp / PgDn by 6 rows move the selection,
+   Enter = INSTALL, / or Ctrl+F = search. Without Wi-Fi: Enter = CONNECT (WHY NO WI-FI after a failure, nothing while
+   it connects). */
+bool l5_ota_key(const l5_key_t *k)
+{
+    if (!O.list) {
+        if (k->kind != L5_KEY_ENTER) return false;
+        l5_wifi_status_t st;
+        l5_wifi_get_status(&st);
+        if (st.state == L5_WIFI_FAILED) {
+            l5_wifi_why();
+        } else if (st.state != L5_WIFI_STARTING && st.state != L5_WIFI_CONNECTING) {
+            l5_wifi_pick();
+        }
+        return true;
+    }
+    int i = -1, last = O.nrows - 1;
+    for (int r = 0; r < O.nrows; r++) {
+        if (!strcmp(O.keys[r], O.sel)) i = r;
+    }
+    switch (k->kind) {
+    case L5_KEY_UP: select_row(i < 0 ? last : i > 0 ? i - 1 : 0); return true;
+    case L5_KEY_DOWN: select_row(i < 0 ? 0 : i < last ? i + 1 : last); return true;
+    case L5_KEY_HOME: select_row(0); return true;
+    case L5_KEY_END: select_row(last); return true;
+    case L5_KEY_PGUP: select_row(i > 6 ? i - 6 : 0); return true;
+    case L5_KEY_PGDN: select_row(i < 0 ? 0 : i + 6 < last ? i + 6 : last); return true;
+    case L5_KEY_ENTER:
+        if (i < 0) return false;
+        install_cb(NULL);
+        return true;
+    case L5_KEY_CHAR:
+        if (k->ch != '/' && !(k->ctrl && (k->ch | 0x20) == 'f')) return false;
+        search_cb(NULL);
+        return true;
+    default: return false;
+    }
 }
 
 static bool s_connected;

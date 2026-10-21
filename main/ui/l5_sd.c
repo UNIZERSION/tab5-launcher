@@ -537,6 +537,32 @@ static void build_side(void)
 
 /* ---------- main pane events ---------- */
 
+static void open_dir(const char *name)
+{
+    size_t l = strlen(R.cwd);
+    if (l + 1 + strlen(name) < sizeof(R.cwd)) {
+        snprintf(R.cwd + l, sizeof(R.cwd) - l, "%s%s", is_root() ? "" : "/", name);
+        R.sel[0] = 0;
+    } else {
+        l5_toast("Path too long");
+    }
+    l5_ui_render_async(); /* the rows are deleted by the re-render */
+}
+
+/* the keyboard's selection: the row as a tap marks it, scrolled into view */
+static void select_row(int i)
+{
+    if (!R.list || i < 0 || i >= R.n) {
+        return;
+    }
+    strlcpy(R.sel, R.e[i].name, sizeof(R.sel));
+    for (int k = 0; k < R.n; k++) {
+        lv_obj_set_state(lv_obj_get_child(R.list, k), LV_STATE_CHECKED, k == i);
+    }
+    lv_obj_scroll_to_view(lv_obj_get_child(R.list, i), LV_ANIM_OFF);
+    build_side();
+}
+
 static void row_cb(lv_event_t *e)
 {
     lv_obj_t *row = lv_event_get_current_target(e);
@@ -545,15 +571,8 @@ static void row_cb(lv_event_t *e)
         return;
     }
     const entry_t *x = &R.e[i];
-    if (x->dir) { /* open the folder */
-        size_t l = strlen(R.cwd);
-        if (l + 1 + strlen(x->name) < sizeof(R.cwd)) {
-            snprintf(R.cwd + l, sizeof(R.cwd) - l, "%s%s", is_root() ? "" : "/", x->name);
-            R.sel[0] = 0;
-        } else {
-            l5_toast("Path too long");
-        }
-        l5_ui_render_async(); /* this row is deleted by the re-render */
+    if (x->dir) {
+        open_dir(x->name);
         return;
     }
     strlcpy(R.sel, x->name, sizeof(R.sel));
@@ -812,6 +831,57 @@ static void no_card(lv_obj_t *m, lv_obj_t *s)
     l5w_big_icon(h, L5_ICON_SD);
     l5w_head_text(h, "SD CARD", st == L5_SD_UNREADABLE ? "Not readable" : st == L5_SD_ERROR ? "Driver error" : "No card",
               "Firmware .bin files on a FAT32 or exFAT card show up here and install into a flash slot.");
+}
+
+/* keys of the Tab5 Keyboard (l5_keys.c): Up / Down, Home / End, PgUp / PgDn by 8 rows move the selection; Enter
+   opens a folder, installs the .bin the side panel offers, views a text file; Esc / Backspace = UP, Delete = DELETE,
+   Ctrl+C COPY, Ctrl+V PASTE, Ctrl+R RENAME, Ctrl+N NEW FOLDER */
+bool l5_sd_key(const l5_key_t *k)
+{
+    if (!R.list) {
+        return false; /* no card */
+    }
+    int i = find(R.sel), last = R.n - 1;
+    switch (k->kind) {
+    case L5_KEY_UP: select_row(i < 0 ? last : i > 0 ? i - 1 : 0); return true;
+    case L5_KEY_DOWN: select_row(i < 0 ? 0 : i < last ? i + 1 : last); return true;
+    case L5_KEY_HOME: select_row(0); return true;
+    case L5_KEY_END: select_row(last); return true;
+    case L5_KEY_PGUP: select_row(i > 8 ? i - 8 : 0); return true;
+    case L5_KEY_PGDN: select_row(i < 0 ? 0 : i + 8 < last ? i + 8 : last); return true;
+    case L5_KEY_ESC:
+    case L5_KEY_BACKSPACE: up_cb(NULL); return true;
+    case L5_KEY_DELETE: l5_sd_action("delete"); return true;
+    case L5_KEY_ENTER: {
+        if (i < 0) {
+            return false;
+        }
+        const entry_t *x = &R.e[i];
+        if (x->dir) {
+            open_dir(x->name);
+        } else if (x->bin) {
+            char t[PATH_LEN]; /* INSTALL as the side panel offers it: only for an image it can install */
+            if (full_path(t, sizeof(t), x->name) && strcmp(t, s_pending.path) == 0) {
+                install_cb(NULL);
+            }
+        } else if (l5_files_is_text(x->name)) {
+            l5_sd_action("view");
+        }
+        return true;
+    }
+    case L5_KEY_CHAR:
+        if (!k->ctrl) {
+            return false;
+        }
+        switch (k->ch | 0x20) {
+        case 'c': l5_sd_action("copy"); return true;
+        case 'v': l5_sd_action("paste"); return true;
+        case 'r': l5_sd_action("rename"); return true;
+        case 'n': l5_sd_action("mkdir"); return true;
+        default: return false;
+        }
+    default: return false;
+    }
 }
 
 void l5_sd_render(lv_obj_t *view)

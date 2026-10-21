@@ -739,6 +739,42 @@ static void bench_start_cb(lv_event_t *e)
 }
 #endif
 
+/* keys of the Tab5 Keyboard (l5_keys.c). One slot: Enter = BOOT, on the empty card INSTALL FROM SD. Several:
+   Left / Up and Right / Down make the previous / next installed app the one that boots, Enter = BOOT. */
+bool l5_home_key(const l5_key_t *k)
+{
+    if (g_slots.n == 1) {
+        if (k->kind != L5_KEY_ENTER) {
+            return false;
+        }
+        if (g_slots.slot[0].used) {
+            hero_boot_cb(NULL);
+        } else {
+            l5_ui_go(L5_VIEW_SD);
+        }
+        return true;
+    }
+    if (k->kind == L5_KEY_ENTER) {
+        if (l5_slots_boot_app()) {
+            l5_boot_app();
+        }
+        return true;
+    }
+    if (k->kind < L5_KEY_LEFT || k->kind > L5_KEY_DOWN) {
+        return false;
+    }
+    int dir = k->kind == L5_KEY_RIGHT || k->kind == L5_KEY_DOWN ? 1 : -1;
+    int i = g_slots.boot >= 0 ? g_slots.boot + dir : dir > 0 ? 0 : g_slots.n - 1;
+    for (; i >= 0 && i < g_slots.n; i += dir) { /* the empty slots are skipped */
+        if (g_slots.slot[i].used) {
+            l5_slots_select(i);
+            paint_selection();
+            break;
+        }
+    }
+    return true;
+}
+
 void l5_home_render(lv_obj_t *view)
 {
 #if L5_TOUCH_TRACE

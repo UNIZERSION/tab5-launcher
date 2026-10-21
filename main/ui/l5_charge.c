@@ -1,6 +1,6 @@
 /* Charge Mode (app.js L5.chargeMode, launcher.css .charge): the battery with its real charge instead of a sweep, the
    percentage, the state under it (CHARGING / ON BATTERY / FULL / USB · NOT CHARGING), re-read every 5 s. While charging
-   only the tip of the fill pulses. A tap goes back to the launcher. */
+   only the tip of the fill pulses. A tap, or Enter / Esc on the Tab5 Keyboard, goes back to the launcher. */
 #include <stdio.h>
 #include <string.h>
 #include "l5_board.h"
@@ -105,6 +105,12 @@ static void exit_cb(lv_event_t *e)
     l5_ui_set_booted(true);
 }
 
+static void key_cb(lv_event_t *e)
+{
+    const l5_key_t *k = lv_event_get_param(e);
+    if (k->kind == L5_KEY_ENTER || k->kind == L5_KEY_ESC) exit_cb(e);
+}
+
 static lv_obj_t *rect(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius)
 {
     lv_obj_t *r = l5_box(parent);
@@ -121,6 +127,7 @@ void l5_charge_mode(void)
     l5_ui_set_booted(false);
     lv_obj_t *el = l5_sys_show(L5_BLACK, L5_BLACK); /* .charge */
     lv_obj_add_event_cb(el, exit_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(el, key_cb, l5_key_event(), NULL);
     lv_obj_add_event_cb(el, deleted_cb, LV_EVENT_DELETE, NULL);
     lv_obj_t *c = l5_box(el);
     lv_obj_set_size(c, LV_SIZE_CONTENT, LV_SIZE_CONTENT);

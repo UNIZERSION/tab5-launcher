@@ -62,12 +62,12 @@ void app_main(void)
     int stopped = l5_slots_stopped();
     bool boot_stopped = stopped >= 0 && stopped == g_slots.boot;
     l5_board_set_rotation(g_cfg.rot);
-    l5_kbd_init(); /* M5Stack Tab5 Keyboard on the side port, own I2C bus: looked for once a second */
 
     l5_board_lock(0);
     l5_theme_init(l5_config_accent_hex(&g_cfg));
     l5_ui_init();
     l5_wifi_ui_init();
+    l5_keys_init(); /* keys of the Tab5 Keyboard to the views, dialogs and the on-screen keyboard */
     l5_ui_prepare(L5_VIEW_HOME); /* the bootscreen (or the app's start screen) is the first frame */
     /* cfg.btnOnlyStart: without a finger on the screen the app starts right away */
     if (g_cfg.btnOnlyStart && l5_slots_boot_app() && !boot_stopped && !l5_board_touch_pressed()) {
@@ -84,4 +84,5 @@ void app_main(void)
     }
     l5_board_reveal(g_cfg.bright); /* the backlight comes on only when the first frame is shown */
     l5_board_unlock();
+    l5_kbd_init(); /* M5Stack Tab5 Keyboard on the side port, own I2C bus: looked for every 2 s */
 }

@@ -1,7 +1,9 @@
 /* CFG: port of renderCFG / cfgAction (views2.js). Every change applies at once where it can
    (backlight, dim timer, accent, rotation) and is saved to /config.conf on the SD card.
    A change updates only its own widgets (value, toggle, swatch, title): rebuilding the view and
-   redrawing all of it took 250-290 ms after every tap. */
+   redrawing all of it took 250-290 ms after every tap.
+   Keys of the Tab5 Keyboard (l5_cfg_key): Up / Down, Home / End move the ring over the rows of the three columns,
+   Enter = a tap on the row, Left / Right = - / + on the stepper rows, the previous / next UI color. */
 #include <stdio.h>
 #include <string.h>
 #include "esp_app_desc.h"
@@ -34,6 +36,18 @@ static struct {
     lv_obj_t *ask, *bins, *wifi, *deep, *btn; /* toggles */
     lv_obj_t *swatch[MAX_SWATCH];
 } W;
+
+/* every row in column order, for the keyboard; empty while CFG is not built */
+#define MAX_KROWS 32
+static struct {
+    lv_obj_t *row[MAX_KROWS];
+    const char *key[MAX_KROWS]; /* Enter: the row's action (NULL: the row has none) */
+    const char *dec[MAX_KROWS]; /* Left / Right on a stepper row */
+    const char *inc[MAX_KROWS];
+    bool color[MAX_KROWS];      /* the UI color row: Left / Right pick the previous / next swatch */
+    int n;
+} K;
+static int s_focus = -1; /* the row with the ring; kept while CFG is rebuilt, -1 = none yet */
 
 /* ---------- saving /config.conf ---------- */
 
@@ -184,6 +198,14 @@ static void widgets_deleted_cb(lv_event_t *e)
 {
     (void)e;
     memset(&W, 0, sizeof(W));
+    memset(&K, 0, sizeof(K));
+}
+
+/* LV_STATE_FOCUS_KEY on the focused row only (L5S.focus draws the ring), scrolled into view */
+static void paint_focus(void)
+{
+    for (int i = 0; i < K.n; i++) lv_obj_set_state(K.row[i], LV_STATE_FOCUS_KEY, i == s_focus);
+    if (s_focus >= 0 && s_focus < K.n) lv_obj_scroll_to_view(K.row[s_focus], LV_ANIM_OFF);
 }
 
 /* ---------- actions ---------- */
@@ -341,9 +363,8 @@ static void row_cb(lv_event_t *e)
     action(lv_event_get_user_data(e));
 }
 
-static void step_cb(lv_event_t *e)
+static void step(const char *k)
 {
-    const char *k = lv_event_get_user_data(e);
     int d = k[strlen(k) - 1] == '+' ? 1 : -1;
     if (!strncmp(k, "bright", 6)) {
         int v = g_cfg.bright + 5 * d; /* L5.setBright */
@@ -368,15 +389,24 @@ static void step_cb(lv_event_t *e)
     l5_cfg_paint();
 }
 
-static void color_cb(lv_event_t *e)
+static void step_cb(lv_event_t *e)
 {
-    int i = (int)(intptr_t)lv_event_get_user_data(e);
+    step(lv_event_get_user_data(e));
+}
+
+static void set_color(int i)
+{
     strlcpy(g_cfg.color, l5_colors[i].id, sizeof(g_cfg.color));
     apply_look(); /* shared styles and the top bar follow at once; CFG uses only shared accent styles */
     save();
     l5_cfg_paint();
     /* the other views bake the accent into local styles: rebuilt when they are shown next */
     l5_ui_render_views(L5_VIEWS_ALL & ~L5_VIEW_BIT(L5_VIEW_CFG));
+}
+
+static void color_cb(lv_event_t *e)
+{
+    set_color((int)(intptr_t)lv_event_get_user_data(e));
 }
 
 /* ---------- building blocks (.crow, .tgl, .step, .swatches) ---------- */
@@ -417,6 +447,11 @@ static lv_obj_t *crow(lv_obj_t *list, const char *key, const char *title, const 
         lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_style(r, &L5S.press_tint, LV_STATE_PRESSED); /* seen at touch-down, the action runs at release */
         lv_obj_add_event_cb(r, row_cb, LV_EVENT_CLICKED, (void *)key);
+    }
+    lv_obj_add_style(r, &L5S.focus, LV_STATE_FOCUS_KEY);
+    if (K.n < MAX_KROWS) {
+        K.row[K.n] = r;
+        K.key[K.n++] = key;
     }
     lv_obj_t *tx = l5_box(r);
     lv_obj_set_height(tx, LV_SIZE_CONTENT);
@@ -490,6 +525,10 @@ static lv_obj_t *stepper(lv_obj_t *row, const char *dec, const char *inc)
     lv_obj_set_flex_flow(s, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(s, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     step_btn(s, "-", dec);
+    if (K.n && K.row[K.n - 1] == row) { /* the row crow() just registered */
+        K.dec[K.n - 1] = dec;
+        K.inc[K.n - 1] = inc;
+    }
     lv_obj_t *o = l5_label(s, &l5_mono_16, L5_ON_PANEL, "");
     lv_obj_set_width(o, 66);
     lv_obj_set_style_text_align(o, LV_TEXT_ALIGN_CENTER, 0);
@@ -499,6 +538,7 @@ static lv_obj_t *stepper(lv_obj_t *row, const char *dec, const char *inc)
 
 static void swatches(lv_obj_t *row)
 {
+    if (K.n && K.row[K.n - 1] == row) K.color[K.n - 1] = true;
     lv_obj_t *w = l5_box(row);
     lv_obj_set_size(w, 4 * 44 + 3 * 6, LV_SIZE_CONTENT);
     lv_obj_set_style_pad_row(w, 6, 0);
@@ -533,10 +573,50 @@ void l5_cfg_paint_wifi(void)
     if (s_wifi_sub) lv_label_set_text(s_wifi_sub, l5_wifi_summary(ws, sizeof(ws)));
 }
 
+/* keys of the Tab5 Keyboard (l5_keys.c) */
+bool l5_cfg_key(const l5_key_t *k)
+{
+    if (!K.n) return false; /* CFG not built */
+    int f = s_focus < K.n ? s_focus : -1;
+    switch (k->kind) {
+    case L5_KEY_UP:
+    case L5_KEY_DOWN:
+        if (f < 0) f = 0; /* the first key shows the ring on the first row */
+        else if (k->kind == L5_KEY_DOWN) f = f + 1 < K.n ? f + 1 : K.n - 1;
+        else f = f > 0 ? f - 1 : 0;
+        s_focus = f;
+        break;
+    case L5_KEY_HOME: s_focus = 0; break;
+    case L5_KEY_END: s_focus = K.n - 1; break;
+    case L5_KEY_ENTER:
+        if (f < 0 || !K.key[f]) return false;
+        action(K.key[f]);
+        return true;
+    case L5_KEY_LEFT:
+    case L5_KEY_RIGHT:
+        if (f < 0) return false;
+        if (K.dec[f]) {
+            step(k->kind == L5_KEY_RIGHT ? K.inc[f] : K.dec[f]);
+            return true;
+        }
+        if (!K.color[f]) return false;
+        {
+            int i = 0;
+            while (i < l5_color_count - 1 && strcmp(l5_colors[i].id, g_cfg.color)) i++;
+            set_color((i + (k->kind == L5_KEY_RIGHT ? 1 : l5_color_count - 1)) % l5_color_count);
+        }
+        return true;
+    default: return false;
+    }
+    paint_focus();
+    return true;
+}
+
 void l5_cfg_render(lv_obj_t *view)
 {
     lv_obj_clean(view);
     memset(&W, 0, sizeof(W));
+    memset(&K, 0, sizeof(K));
     char t[48];
 
     /* values, toggle states and titles come from l5_cfg_paint() at the end */
@@ -580,4 +660,5 @@ void l5_cfg_render(lv_obj_t *view)
     chev(crow(y, "restart", "Restart", "Back to the boot screen", false));
     chev(crow(y, "off", "Turn off", "Press POWER to start again", true));
     l5_cfg_paint();
+    if (s_focus >= 0) paint_focus(); /* the ring stays on its row */
 }

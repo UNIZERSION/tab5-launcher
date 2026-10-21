@@ -2,8 +2,10 @@
    .kb). l5_keyboard() returns at once and the text arrives in the callback, NULL for CANCEL, like
    the prototype's promise. Two layouts (abc, ?123), one-shot SHIFT, masked input with SHOW / HIDE.
    The field shows the end of the text when it gets longer than the field.
-   With the M5Stack Tab5 Keyboard plugged in (l5_kbd.c) only the field shows, with a hint line: its keys type into
-   the field, Enter = OK, Esc = CANCEL, and a tap on the field brings the on-screen keys. */
+   With the M5Stack Tab5 Keyboard plugged in (l5_kbd.c) the panel sits in the middle of the screen with only the
+   field and a bar (hint, CANCEL, OK). Its keys (l5_keys.c sends them here as l5_key_event()): characters type,
+   Backspace and Delete erase the last character, Ctrl+U = CLEAR, Enter = OK, Esc = CANCEL, the rest does nothing.
+   A tap on the field brings the on-screen keys; plugging the keyboard in or pulling it out switches the layout. */
 #include <string.h>
 #include "l5_kbd.h"
 #include "l5_ui.h"
@@ -54,12 +56,14 @@ typedef struct {
     size_t len, cap;
     uint16_t chars, max_chars;
     bool shift, sym, mask, show;
-    bool compact; /* keyboard plugged in: the on-screen keys are hidden */
-    bool keys_on; /* the field was tapped: on-screen keys even with the keyboard plugged in */
-    lv_obj_t *wrap, *field, *tx, *caret, *eye, *hint;
-    lv_obj_t *row[ROWS];
+    lv_obj_t *wrap, *field, *tx, *caret, *eye;
     lv_obj_t *key[ROWS][COLS];
-    lv_timer_t *blink, *hw;
+    lv_obj_t *kb;         /* the panel */
+    lv_obj_t *row[ROWS];
+    lv_obj_t *bar;        /* hint, CANCEL, OK: shown instead of the rows while the keyboard is plugged in */
+    bool compact;         /* keyboard plugged in: the on-screen keys are hidden */
+    bool keys_on;         /* the field was tapped: on-screen keys even with the keyboard plugged in */
+    lv_timer_t *blink;
 } kb_t;
 
 static lv_style_t s_key, s_key_fn, s_key_pr, s_key_ok;
@@ -257,6 +261,17 @@ static void press(kb_t *k, const char *key)
 
 /* ---------- events ---------- */
 
+/* the on-screen keys, or (keyboard plugged in) only the field and the bar, the panel in the middle */
+static void layout(kb_t *k, bool compact)
+{
+    k->compact = compact;
+    for (int r = 0; r < ROWS; r++) lv_obj_set_flag(k->row[r], LV_OBJ_FLAG_HIDDEN, compact);
+    lv_obj_set_flag(k->bar, LV_OBJ_FLAG_HIDDEN, !compact);
+    lv_obj_align(k->kb, compact ? LV_ALIGN_CENTER : LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_update_layout(k->wrap); /* paint() measures the field */
+    paint(k);
+}
+
 static void key_cb(lv_event_t *e)
 {
     kb_t *k = lv_event_get_user_data(e);
@@ -272,57 +287,59 @@ static void key_cb(lv_event_t *e)
     if (bksp ? code != LV_EVENT_CLICKED : code == LV_EVENT_CLICKED) press(k, key);
 }
 
+/* keys of the Tab5 Keyboard */
+static void kb_key_cb(lv_event_t *e)
+{
+    kb_t *k = lv_event_get_user_data(e);
+    const l5_key_t *key = lv_event_get_param(e);
+    switch (key->kind) {
+    case L5_KEY_ENTER: press(k, "OK"); break;      /* k is gone */
+    case L5_KEY_ESC: press(k, "CANCEL"); break;    /* k is gone */
+    case L5_KEY_BACKSPACE:
+    case L5_KEY_DELETE: press(k, "BKSP"); break;
+    case L5_KEY_CHAR:
+        if (key->ctrl) {
+            if ((key->ch & 0xDF) == 'U') press(k, "CLEAR"); /* Ctrl+U, as in a shell */
+        } else if (!key->alt) {
+            const char s[2] = {key->ch, '\0'};
+            append(k, s);
+            paint(k);
+        }
+        break;
+    default: break;
+    }
+}
+
+/* the caret; plugging the keyboard in or pulling it out switches the layout */
 static void blink_cb(lv_timer_t *t)
 {
     kb_t *k = lv_timer_get_user_data(t);
     bool on = lv_obj_get_style_opa(k->caret, 0) == LV_OPA_COVER;
     lv_obj_set_style_opa(k->caret, on ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
-}
-
-/* the on-screen keys, or only the field and the hint while the keyboard is plugged in */
-static void layout(kb_t *k)
-{
-    k->compact = l5_kbd_present() && !k->keys_on;
-    for (int r = 0; r < ROWS; r++) lv_obj_set_flag(k->row[r], LV_OBJ_FLAG_HIDDEN, k->compact);
-    lv_obj_set_flag(k->hint, LV_OBJ_FLAG_HIDDEN, !k->compact);
+    bool compact = l5_kbd_present() && !k->keys_on;
+    if (k->compact != compact) layout(k, compact);
 }
 
 static void field_cb(lv_event_t *e)
 {
     kb_t *k = lv_event_get_user_data(e);
-    if (!k->compact) return;
-    k->keys_on = true;
-    layout(k);
+    if (k->compact) {
+        k->keys_on = true;
+        layout(k, false);
+    }
 }
 
-/* keys from the Tab5 Keyboard; plugging it in or pulling it out switches the layout */
-static void hw_cb(lv_timer_t *t)
+/* CANCEL (user data 0) and OK (1) on the bar */
+static void bar_cb(lv_event_t *e)
 {
-    kb_t *k = lv_timer_get_user_data(t);
-    if (k->compact != (l5_kbd_present() && !k->keys_on)) layout(k);
-    l5_kbd_key_t key;
-    bool typed = false;
-    while (l5_kbd_get(&key)) {
-        switch (key.kind) {
-        case L5_KBD_ENTER: press(k, "OK"); return;         /* k is gone */
-        case L5_KBD_ESC: press(k, "CANCEL"); return;       /* k is gone */
-        case L5_KBD_BACKSPACE: press(k, "BKSP"); break;
-        default: {
-            const char s[2] = {key.ch, '\0'};
-            append(k, s);
-            typed = true;
-            break;
-        }
-        }
-    }
-    if (typed) paint(k);
+    kb_t *k = lv_event_get_user_data(e);
+    press(k, lv_obj_get_user_data(lv_event_get_current_target(e)) ? "OK" : "CANCEL");
 }
 
 static void delete_cb(lv_event_t *e)
 {
     kb_t *k = lv_event_get_user_data(e);
     lv_timer_delete(k->blink);
-    lv_timer_delete(k->hw);
     memset(k->text, 0, k->cap);
     lv_free(k->text);
     lv_free(k->dots);
@@ -370,8 +387,10 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
     lv_obj_set_style_bg_color(k->wrap, lv_color_hex(0x08090b), 0);
     lv_obj_add_flag(k->wrap, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(k->wrap, delete_cb, LV_EVENT_DELETE, k);
+    lv_obj_add_event_cb(k->wrap, kb_key_cb, l5_key_event(), k);
 
     lv_obj_t *kb = l5_box(k->wrap); /* .kb.dark */
+    k->kb = kb;
     lv_obj_add_style(kb, &L5S.dark, 0);
     lv_obj_add_flag(kb, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_size(kb, L5_SCREEN_W, LV_SIZE_CONTENT);
@@ -391,8 +410,6 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
     lv_obj_t *q = l5_label(top, &l5_mono_14, L5_ON_PANEL_MUTED, opts && opts->title ? opts->title : "INPUT");
     lv_obj_set_style_text_letter_space(q, 2, 0);
     k->field = l5_box(top); /* .kb-field */
-    lv_obj_add_flag(k->field, LV_OBJ_FLAG_CLICKABLE); /* with the keyboard plugged in: the on-screen keys */
-    lv_obj_add_event_cb(k->field, field_cb, LV_EVENT_CLICKED, k);
     lv_obj_set_height(k->field, 56);
     lv_obj_set_flex_grow(k->field, 1);
     lv_obj_set_style_pad_hor(k->field, 16, 0);
@@ -403,6 +420,8 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
     lv_obj_set_style_radius(k->field, 3, 0);
     lv_obj_set_flex_flow(k->field, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(k->field, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_add_flag(k->field, LV_OBJ_FLAG_CLICKABLE); /* with the keyboard plugged in: the on-screen keys */
+    lv_obj_add_event_cb(k->field, field_cb, LV_EVENT_CLICKED, k);
     k->tx = l5_label(k->field, &s_font_field, L5_WHITE, "");
     k->caret = l5_box(k->field);
     lv_obj_set_size(k->caret, 2, 30);
@@ -413,9 +432,6 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
         k->eye = key_obj(k, top, true, EYE_ID);
         lv_obj_set_size(k->eye, 110, 56);
     }
-    k->hint = l5_label(kb, &l5_mono_14, L5_ON_PANEL_MUTED, HW_HINT);
-    lv_obj_set_style_text_letter_space(k->hint, 2, 0);
-    lv_obj_set_style_pad_ver(k->hint, 6, 0);
 
     for (int r = 0; r < ROWS; r++) { /* .kb-row */
         lv_obj_t *row = l5_box(kb);
@@ -437,11 +453,25 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
             k->key[r][c] = b;
         }
     }
+
+    k->bar = l5_box(kb); /* keyboard plugged in: what the keys do, and the two actions for a finger */
+    lv_obj_set_size(k->bar, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_top(k->bar, 10, 0);
+    lv_obj_set_style_pad_bottom(k->bar, 3, 0); /* room for the 3px button shadow */
+    lv_obj_set_style_pad_column(k->bar, 12, 0);
+    lv_obj_set_flex_flow(k->bar, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(k->bar, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *hint = l5_label(k->bar, &l5_mono_14, L5_ON_PANEL_MUTED, HW_HINT);
+    lv_obj_set_style_text_letter_space(hint, 1, 0);
+    lv_obj_set_flex_grow(hint, 1);
+    for (int i = 0; i < 2; i++) {
+        lv_obj_t *b = l5_act_button(k->bar, i ? L5_ICON_CHECK : L5_ICON_X, i ? "OK" : "CANCEL", i == 1);
+        lv_obj_set_style_min_width(b, 170, 0);
+        lv_obj_set_user_data(b, (void *)(intptr_t)i);
+        lv_obj_add_event_cb(b, bar_cb, LV_EVENT_CLICKED, k);
+    }
+
     k->blink = lv_timer_create(blink_cb, 500, k); /* @keyframes blink, steps(1) */
-    l5_kbd_flush(); /* keys typed before the field opened do not count */
-    k->hw = lv_timer_create(hw_cb, 25, k);
-    layout(k);
     relabel(k);
-    lv_obj_update_layout(k->wrap); /* paint() measures the field */
-    paint(k);
+    layout(k, l5_kbd_present());
 }

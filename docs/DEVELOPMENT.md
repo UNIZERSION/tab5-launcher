@@ -52,13 +52,34 @@ strings do not show was written new, so the code is not the lost code, and none 
 
 - **WUI tab and USB Mass Storage row removed** (both only said "not ported yet"): five tabs, menus "OTA, SD, CFG, PMan,
   APP, OFF", texts "Install it from SD or OTA".
-- **M5Stack Tab5 Keyboard** (`main/l5_kbd.c`, new): own I2C bus on GPIO 0 / 1 (any free port; the BSP has port
-  `CONFIG_BSP_I2C_NUM` = 1), address 0x6D, firmware byte at 0xFE, mode register 0x10 set to HID (1) and read back, events
-  from 0x30 (HID modifier + usage ID). A worker looks for the keyboard once a second and polls it every 25 ms while it is
-  there; "keyboard gone" after 3 failed reads. At a restart it gets its old mode back and the bus is deleted
-  (`i2c_del_master_bus`). The `i2c.master` log tag is turned off: probing an empty port fails every second. In the
-  on-screen keyboard (`l5_keyboard.c`) the keys are hidden while it is plugged in: "KEYBOARD · ENTER = OK · ESC = CANCEL ·
-  TAP THE FIELD FOR ON-SCREEN KEYS".
+- **M5Stack Tab5 Keyboard** (`main/l5_kbd.c`, `main/ui/l5_keys.c`, new). Rebuilt a second time on 2026-10-21 from the
+  machine code of the Tab5 build: the functions of v0.1.0 were matched in it (masked RISC-V instructions, 90% of the
+  code), the rest disassembled and read (`objdump`), so the keys, the driver and the dialogs' key handling follow that
+  code; the key map is in the GUIDE ("M5Stack Tab5 Keyboard").
+  - Driver (`l5_kbd.c`): I2C port 0 (the BSP's system bus is `CONFIG_BSP_I2C_NUM` = 1), SDA GPIO 0, SCL GPIO 1, internal
+    pull-ups, address 0x6D at 100 kHz; INT on GPIO 50 (input with pull-up, read as a level). A worker (priority 2,
+    core 1) looks for the keyboard every 2 s with the `i2c.master` log off only during the probe: register 0xFE
+    (firmware), 0xFF must read 0x6D, then 0x10 (mode). Setup: 0x10 = 1 (HID), 0x00 = 2 (interrupt for HID only),
+    0x02 = 0, 0x01 = 0. While it is there, events (0x30: HID modifier + usage ID) are read when INT is low or every
+    100 ms, more than 32 waiting are flushed; every 1 s the mode is read back and set again when it is not HID; a failed
+    read = "keyboard gone". The loop runs every 10 ms (100 ms without a keyboard). Keys (`l5_key_t`, 6 bytes: kind,
+    character, ctrl, shift, alt, repeat): characters, Enter (also the keypad's), Esc, Backspace, Delete, Tab, arrows,
+    Home / End, PgUp / PgDn. Auto-repeat after 450 ms every 60 ms, at most 10 s, not for Enter / Esc / Tab or with
+    Ctrl / Alt; a release stops it. Queue of 64, flushed when full. At a restart (shutdown handler) the device and the
+    bus are deleted and GPIO 0, 1, 50 reset; the mode is not changed.
+  - UI (`l5_keys.c`): an LVGL timer takes up to 8 keys every 20 ms. A dimmed or dark screen only wakes; every key counts
+    as activity. A dialog, menu or the text field on `#layer` gets the key as the custom LVGL event `l5_key_event()`
+    (`lv_event_register_id()`, the parameter is the `l5_key_t`); a screen on `#sys` goes to `l5_sys_key()` (boot screen:
+    any key = ENTER LAUNCHER, Charge Mode: Enter / Esc); otherwise Tab / Shift+Tab and Ctrl+→ / Ctrl+← switch tabs and
+    the rest goes to `l5_home_key()`, `l5_sd_key()`, `l5_ota_key()` or `l5_cfg_key()`.
+  - The ring is `L5S.focus` (2 px outline in the accent, 3 px inside the object) on `LV_STATE_FOCUS_KEY`: menu items,
+    the modal's buttons, the CFG rows (`K`: every row, its action key, its stepper keys, the color row; the focused row
+    survives a rebuild). The text field with the keyboard plugged in (`l5_keyboard.c`): the panel moves to the middle of
+    the screen, the key rows are hidden and a bar shows "KEYBOARD · ENTER = OK · ESC = CANCEL · TAP THE FIELD FOR
+    ON-SCREEN KEYS" with CANCEL / OK; the caret's 500 ms timer switches the layout when the keyboard comes or goes.
+  - Not restored yet from the same code: the Tab5 build draws the gradients of the dark and light panels itself with
+    ordered dithering (a draw-task hook and a cache of 64 gradients after `l5_keys.c`, 1 KB of initialized data); it
+    is not part of the key handling and is not in this source.
 - **config.conf put back** (`l5_config_replace()`, `l5_sd_ops.c`): RENAME or PASTE onto `/config.conf` while the
   launcher's own file is there asks "Replace config.conf?"; the old file steps aside as `config.conf.old` for the swap, the
   settings apply at once (`l5_cfg_reload_now()`), a file that is not a JSON object leaves them as they are.
@@ -614,7 +635,11 @@ it fits with about 40 px of headroom), a text file, the clipboard, the current f
 of Polish text (accented capital letters in the first line intact), a preview of a truncated file, the delete
 confirmations for a folder and `config.conf`, the RENAME keyboard with a Polish name, a rejected name, NEW FOLDER, a new
 folder, pasting a folder into itself, a folder with 230 files ("FIRST 200 LISTED"). Background tasks run there at once,
-so the progress dialog never shows.
+so the progress dialog never shows. Scenes 50–53 come from the key test (`shots --keys`, also run by
+`run.py`): the ring on CANCEL of a confirmation, on a menu item and on a CFG row, the text field with the keyboard
+plugged in. The key test types on a stand-in keyboard (`views_stubs.c`: `shots_kbd_push`) and checks tab switching,
+waking, the dialogs, menus, VIEW, progress, the text field, HOME, SD (on the card folder), OTA (no Wi-Fi, a failure,
+search, three favorites) and CFG.
 
 ## OTA: online installer
 
@@ -982,7 +1007,8 @@ l5_keyboard(&opts, name_cb, NULL);
   - ⌫ and the SHIFT arrow are FontAwesome symbols from LVGL's built-in Montserrat 14 font
     (the fallback font of the function keys);
   - a long press on ⌫ keeps deleting characters;
-  - there is no support for a physical keyboard or pasting (the prototype has `keydown` and `paste`).
+  - the M5Stack Tab5 Keyboard stands for `keydown` (see "Restored build of 2026-10-20": characters, Backspace / Delete,
+    Ctrl+U = CLEAR, Enter = OK, Esc = CANCEL, the compact layout with the bar); there is no pasting.
 - Today it is used by the Wi-Fi password ("PASSWORD · SSID"), the OTA search ("SEARCH FIRMWARE") and ADD LINK
   in the OTA favorites (name and link). It is ready for renaming and new folders on SD and for the WUI login.
 
@@ -1238,11 +1264,12 @@ the default settings at once (the scheme stays), and a new file is created on th
 | `main/l5_files.c` | card file operations for `sdAction`: names, `uniq()`, listing through FatFs, counting, copying, deleting, text for VIEW |
 | `main/ui/l5_sd_ops.c` | `sdAction` (copy, paste, rename, mkdir, delete, view), `R.sd.clip`, background task with progress and CANCEL |
 | `certs/ota_roots.pem` | root certificates for HTTPS (not in the prototype) |
-| `tools/host_test` | test on the PC: partition table, AUTO PARTITION, installer, file operations, font decompression in two threads, dimming and screen off (`ui/shots.c --idle`), boot-loop guard (`test_guard.c`), charger pins on an expander model (`test_charger.c`); `ui_shots.py`: screenshots of the SD and HOME views on the real launcher screen; `lvgl_host.py`: LVGL with the firmware options on the PC (not in the prototype) |
+| `tools/host_test` | test on the PC: partition table, AUTO PARTITION, installer, file operations, font decompression in two threads, dimming and screen off (`ui/shots.c --idle`), the Tab5 Keyboard's keys (`ui/shots.c --keys`), boot-loop guard (`test_guard.c`), charger pins on an expander model (`test_charger.c`); `ui_shots.py`: screenshots of the SD and HOME views on the real launcher screen; `lvgl_host.py`: LVGL with the firmware options on the PC (not in the prototype) |
 | `tools/patch_lvgl_rle.py` | copy of `lv_font_fmt_txt.c` from LVGL 9.3 with per-call RLE state (the "Fonts" section) |
 | `main/l5_board.c` | display start, backlight, SD, RTC RX8130, INA226 battery (voltage, pack current and state: charging / battery / USB not charging), charger (CHG_EN), power-off, ESP32-C6 power |
 | `main/l5_pi4io.h` | registers of the second expander (PI4IOE5V6408 0x44) and the charger enable steps, shared by the firmware and the PC test |
-| `main/l5_kbd.c` | M5Stack Tab5 Keyboard on the side port (not in the prototype, which has `keydown`): own I2C bus, HID events into the on-screen keyboard |
+| `main/l5_kbd.c` | M5Stack Tab5 Keyboard on the side port (not in the prototype, which has `keydown`): own I2C bus, HID events turned into keys with auto-repeat |
+| `main/ui/l5_keys.c` | the keys in the UI: waking, tab switching, the topmost dialog / menu / text field, the system screen or the visible tab (not in the prototype) |
 | `main/l5_wifi.c` | `R.wifi`, `S.savedWifi`, Wi-Fi in `L5.start`: ESP32-C6 over ESP-Hosted, scan, connecting, saved networks in NVS |
 | `main/l5_display.c` | panel + touch, LVGL → PPA → hidden DPI buffer, whole-frame publishing (from `..\aurora-player\components\tab5_hal\tab5_display.c`) |
 | `main/ui/l5_theme.c` | `:root` tokens and classes from launcher.css (`.plate`, `.dark`, `.act`, `.slot`, `.chamfer`…) |

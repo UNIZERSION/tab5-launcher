@@ -56,6 +56,7 @@ static void accent_styles(void)
     lv_style_set_bg_color(&L5S.press_fill, L5P.accent);
     lv_style_set_bg_color(&L5S.tgl_on, L5P.accent);
     lv_style_set_shadow_color(&L5S.tgl_on, L5P.accent);
+    lv_style_set_outline_color(&L5S.focus, L5P.accent);
 }
 
 void l5_theme_init(uint32_t accent_hex)
@@ -248,6 +249,10 @@ void l5_theme_init(uint32_t accent_hex)
     lv_style_set_shadow_spread(&L5S.swatch_sel, 5);
     lv_style_set_shadow_color(&L5S.swatch_sel, L5_BLACK);
     lv_style_set_shadow_opa(&L5S.swatch_sel, LV_OPA_COVER);
+    lv_style_init(&L5S.focus); /* keyboard focus: an accent ring 3 px inside the edge */
+    lv_style_set_outline_width(&L5S.focus, 2);
+    lv_style_set_outline_pad(&L5S.focus, -3);
+    lv_style_set_outline_opa(&L5S.focus, LV_OPA_COVER);
 
     accent_styles();
 }

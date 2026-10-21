@@ -5,7 +5,10 @@
    runs it: shots <output folder>; the card is the folder CONFIG_BSP_SD_MOUNT_POINT.
    shots --idle: dim, screen off and wake with l5_ui.c's own idle timer (run.py runs it).
    shots --taps: what a tap at the edges of the top bar's keys and buttons hits, and HOME's redraw bench (a long press
-   on its header) putting every part back (run.py runs it). */
+   on its header) putting every part back (run.py runs it).
+   shots --keys: the M5Stack Tab5 Keyboard typed into the launcher (l5_keys.c and the views, dialogs, menus, text
+   viewer, progress, on-screen keyboard and Charge Mode), as in the original build of 20.10.2026 (run.py runs it; the
+   snapshots end with four of its scenes). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +26,11 @@ extern int shots_backlight; /* ui_stubs.c: last l5_board_backlight() */
 extern bool shots_sd_ready;
 extern int shots_wifi_state;
 extern int shots_battery, shots_charging;
+extern int shots_boots, shots_selects;          /* ui_stubs.c: BOOT, boot choice */
+extern bool shots_kbd_present;                  /* views_stubs.c: the Tab5 Keyboard */
+extern int shots_wifi_picks, shots_wifi_whys;
+extern int shots_favs;
+void shots_kbd_push(l5_key_t k);
 extern uint64_t l5_files_host_total, l5_files_host_free; /* l5_files.c on the PC */
 
 #define W 1280
@@ -522,10 +530,529 @@ static int bench_restore_test(void)
     return fails;
 }
 
+/* ---------- the Tab5 Keyboard: what each part of the launcher does with a key ---------- */
+
+static bool s_key_shots; /* the snapshot run: four scenes of the key test are saved too */
+
+static void type_key(uint8_t kind, char ch, bool ctrl, bool shift, bool alt)
+{
+    shots_kbd_push((l5_key_t){.kind = kind, .ch = ch, .ctrl = ctrl, .shift = shift, .alt = alt});
+    settle(40); /* l5_keys.c takes the keys every 20 ms; re-renders it asks for run in the same time */
+}
+#define KEY(k) type_key(L5_KEY_##k, 0, false, false, false)
+#define SHIFT(k) type_key(L5_KEY_##k, 0, false, true, false)
+#define CTRLK(k) type_key(L5_KEY_##k, 0, true, false, false)
+#define CHR(c) type_key(L5_KEY_CHAR, (c), false, false, false)
+#define CTRL(c) type_key(L5_KEY_CHAR, (c), true, false, false)
+#define ALT(c) type_key(L5_KEY_CHAR, (c), false, false, true)
+
+static int layer_n(void)
+{
+    return (int)lv_obj_get_child_count(l5_ui_layer());
+}
+
+/* action i of the open modal: scrim > modal > its last row > buttons */
+static lv_obj_t *modal_btn(int i)
+{
+    lv_obj_t *m = lv_obj_get_child(lv_obj_get_child(l5_ui_layer(), -1), 0);
+    return lv_obj_get_child(lv_obj_get_child(m, -1), i);
+}
+
+static bool ring(lv_obj_t *o)
+{
+    return o && lv_obj_has_state(o, LV_STATE_FOCUS_KEY);
+}
+
+static int s_ok, s_index;
+static char s_id[24], s_text[80];
+static void ok_cb(bool ok, void *user) { (void)user; s_ok = ok; }
+static void index_cb(int index, void *user) { (void)user; s_index = index; }
+static void id_cb(const char *id, void *user) { (void)user; strlcpy(s_id, id ? id : "-", sizeof(s_id)); }
+static void text_cb(const char *text, void *user) { (void)user; strlcpy(s_text, text ? text : "-", sizeof(s_text)); }
+
+static void global_keys(void)
+{
+    l5_ui_go(L5_VIEW_HOME);
+    KEY(TAB);
+    EXPECT(l5_ui_view() == L5_VIEW_SD, "Tab: the next tab (view %d)", l5_ui_view());
+    SHIFT(TAB);
+    EXPECT(l5_ui_view() == L5_VIEW_HOME, "Shift+Tab: the previous tab (view %d)", l5_ui_view());
+    CTRLK(LEFT);
+    EXPECT(l5_ui_view() == L5_VIEW_CFG, "Ctrl+Left from HOME goes round to CFG (view %d)", l5_ui_view());
+    CTRLK(RIGHT);
+    EXPECT(l5_ui_view() == L5_VIEW_HOME, "Ctrl+Right from CFG goes round to HOME (view %d)", l5_ui_view());
+    CTRLK(TAB);
+    EXPECT(l5_ui_view() == L5_VIEW_HOME, "Ctrl+Tab switches nothing (view %d)", l5_ui_view());
+    l5_info("TEST", "Open", "A dialog takes the keys.");
+    KEY(TAB);
+    EXPECT(l5_ui_view() == L5_VIEW_HOME && layer_n() == 1, "with a dialog open Tab stays in the dialog");
+    close_all();
+    g_cfg.bright = 70;
+    g_cfg.dim = 30;
+    g_cfg.screenOff = 60;
+    l5_ui_wake();
+    idle_for(61500, NULL);
+    EXPECT(shots_backlight == 0, "dark after 60 s, backlight %d", shots_backlight);
+    KEY(TAB);
+    EXPECT(shots_backlight == 70 && l5_ui_view() == L5_VIEW_HOME, "the first key only wakes the screen (backlight %d, "
+           "view %d)", shots_backlight, l5_ui_view());
+    g_cfg.screenOff = 120;
+}
+
+static void dialog_keys(void)
+{
+    s_ok = -1;
+    l5_confirm("TEST", "Erase app0?", "Sensor-Hub is removed from flash.", "ERASE", true, ok_cb, NULL);
+    KEY(ENTER);
+    EXPECT(s_ok == 1 && !layer_n(), "confirm: Enter = the primary action (ok %d, %d open)", s_ok, layer_n());
+    s_ok = -1;
+    l5_confirm("TEST", "Erase app0?", "Sensor-Hub is removed from flash.", "ERASE", true, ok_cb, NULL);
+    KEY(ESC);
+    EXPECT(s_ok == 0 && !layer_n(), "confirm: Esc = CANCEL (ok %d)", s_ok);
+    s_ok = -1;
+    l5_confirm("TEST", "Erase app0?", "Sensor-Hub is removed from flash.", "ERASE", true, ok_cb, NULL);
+    KEY(LEFT);
+    EXPECT(ring(modal_btn(0)) && !ring(modal_btn(1)), "confirm: Left puts the ring on CANCEL");
+    if (s_key_shots) shot("50_keys_confirm_ring");
+    KEY(ENTER);
+    EXPECT(s_ok == 0, "confirm: Enter on the ring = CANCEL (ok %d)", s_ok);
+    s_ok = -1;
+    l5_confirm("TEST", "Erase app0?", "Sensor-Hub is removed from flash.", "ERASE", true, ok_cb, NULL);
+    KEY(TAB);
+    KEY(TAB);
+    EXPECT(ring(modal_btn(1)), "confirm: Tab stops at the last action");
+    SHIFT(TAB);
+    SHIFT(TAB);
+    EXPECT(ring(modal_btn(0)) && !ring(modal_btn(1)), "confirm: Shift+Tab stops at the first action");
+    KEY(RIGHT);
+    KEY(ENTER);
+    EXPECT(s_ok == 1, "confirm: Right, Enter = the primary action (ok %d)", s_ok);
+    s_ok = -1;
+    l5_confirm("TEST", "Erase app0?", "Sensor-Hub is removed from flash.", "ERASE", true, ok_cb, NULL);
+    lv_obj_add_state(modal_btn(1), LV_STATE_DISABLED);
+    KEY(ENTER);
+    EXPECT(s_ok == -1 && layer_n() == 1, "confirm: Enter does not take a disabled action");
+    close_all();
+    s_ok = -1;
+    l5_ask("TEST", "Update?", "A new version is there.", "LATER", "UPDATE", NULL, ok_cb, NULL);
+    KEY(ESC);
+    EXPECT(s_ok == 0 && !layer_n(), "ask: Esc = its cancel action, LATER (ok %d)", s_ok);
+    l5_info("TEST", "Done", "Installed.");
+    KEY(ESC);
+    EXPECT(!layer_n(), "info: Esc closes it");
+    l5_info("TEST", "Done", "Installed.");
+    KEY(ENTER);
+    EXPECT(!layer_n(), "info: Enter = OK");
+    static const char *const KCE[] = {"KEEP", "CANCEL", "ERASE"};
+    s_index = -1;
+    l5_choose("TEST", "Three actions", "Body", KCE, 3, NULL, index_cb, NULL);
+    KEY(ESC);
+    EXPECT(s_index == 1 && !layer_n(), "choose: Esc = the action called CANCEL (index %d)", s_index);
+    static const char *const KE[] = {"KEEP", "ERASE"};
+    s_index = -1;
+    l5_choose("TEST", "Two actions", "Body", KE, 2, NULL, index_cb, NULL);
+    KEY(ESC);
+    EXPECT(s_index == -1 && layer_n() == 1, "choose without CANCEL: Esc does nothing (index %d)", s_index);
+    KEY(ENTER);
+    EXPECT(s_index == 1 && !layer_n(), "choose: Enter = the last, primary action (index %d)", s_index);
+
+    static const l5_menu_item_t ITEMS[] = {
+        {"boot", L5_ICON_LAUNCH, "Boot now", false},
+        {"pick", L5_ICON_CHECK, "Boot this app after the bootscreen", false},
+        {"erase", L5_ICON_TRASH, "Erase app0 from flash", true},
+    };
+    l5_menu("APP0", "Sensor-Hub-3.0.1", ITEMS, 3, id_cb, NULL);
+    KEY(DOWN);
+    KEY(DOWN);
+    if (s_key_shots) shot("51_keys_menu_ring");
+    KEY(ENTER);
+    EXPECT(!strcmp(s_id, "pick") && !layer_n(), "menu: Down, Down, Enter = the second item (%s)", s_id);
+    l5_menu("APP0", "Sensor-Hub-3.0.1", ITEMS, 3, id_cb, NULL);
+    KEY(END);
+    KEY(UP);
+    KEY(HOME);
+    KEY(ENTER);
+    EXPECT(!strcmp(s_id, "boot"), "menu: End, Up, Home, Enter = the first item (%s)", s_id);
+    l5_menu("APP0", "Sensor-Hub-3.0.1", ITEMS, 3, id_cb, NULL);
+    KEY(UP);
+    KEY(ENTER);
+    EXPECT(!strcmp(s_id, "erase"), "menu: Up from no ring = the last item (%s)", s_id);
+    l5_menu("APP0", "Sensor-Hub-3.0.1", ITEMS, 3, id_cb, NULL);
+    KEY(TAB);
+    KEY(TAB);
+    SHIFT(TAB);
+    KEY(ENTER);
+    EXPECT(!strcmp(s_id, "boot"), "menu: Tab, Tab, Shift+Tab, Enter = the first item (%s)", s_id);
+    strcpy(s_id, "?");
+    l5_menu("APP0", "Sensor-Hub-3.0.1", ITEMS, 3, id_cb, NULL);
+    KEY(ENTER);
+    EXPECT(!strcmp(s_id, "?") && layer_n() == 1, "menu: Enter without the ring picks nothing");
+    KEY(ESC);
+    EXPECT(!strcmp(s_id, "-") && !layer_n(), "menu: Esc closes it (%s)", s_id);
+
+    volatile bool cancel = false;
+    l5_progress_t *p = l5_progress_open("TEST", "Working");
+    KEY(ESC);
+    EXPECT(layer_n() == 1, "progress without CANCEL: Esc does nothing");
+    l5_progress_cancelable(p, &cancel);
+    KEY(ESC);
+    EXPECT(cancel, "progress: Esc = CANCEL");
+    l5_progress_close(p);
+}
+
+/* the on-screen keyboard: wrap > panel > [top: title, field: text, caret], 5 key rows, bar */
+static lv_obj_t *kb_panel(void)
+{
+    return lv_obj_get_child(lv_obj_get_child(l5_ui_layer(), -1), 0);
+}
+
+static const char *kb_text(void)
+{
+    lv_obj_t *field = lv_obj_get_child(lv_obj_get_child(kb_panel(), 0), 1);
+    return lv_label_get_text(lv_obj_get_child(field, 0));
+}
+
+static bool kb_compact(void)
+{
+    return lv_obj_has_flag(lv_obj_get_child(kb_panel(), 1), LV_OBJ_FLAG_HIDDEN) &&
+           !lv_obj_has_flag(lv_obj_get_child(kb_panel(), -1), LV_OBJ_FLAG_HIDDEN);
+}
+
+static void keyboard_keys(void)
+{
+    const l5_keyboard_opts_t o = {.title = "NEW FOLDER", .value = "x"};
+    l5_keyboard(&o, text_cb, NULL);
+    EXPECT(kb_compact(), "keyboard plugged in: only the field and the bar");
+    CHR('a');
+    CHR('b');
+    EXPECT(!strcmp(kb_text(), "xab"), "the keys type: %s", kb_text());
+    if (s_key_shots) shot("52_keys_keyboard_plugged_in");
+    KEY(BACKSPACE);
+    KEY(DELETE);
+    EXPECT(!strcmp(kb_text(), "x"), "Backspace and Delete erase the last character: %s", kb_text());
+    CTRL('u');
+    EXPECT(!strcmp(kb_text(), ""), "Ctrl+U = CLEAR: %s", kb_text());
+    CHR('Z');
+    ALT('q');
+    CTRL('a');
+    KEY(TAB);
+    KEY(LEFT);
+    EXPECT(!strcmp(kb_text(), "Z"), "Alt, other Ctrl keys, Tab and arrows type nothing: %s", kb_text());
+    KEY(ENTER);
+    EXPECT(!strcmp(s_text, "Z") && !layer_n(), "Enter = OK (%s)", s_text);
+    l5_keyboard(&o, text_cb, NULL);
+    KEY(ESC);
+    EXPECT(!strcmp(s_text, "-") && !layer_n(), "Esc = CANCEL (%s)", s_text);
+    l5_keyboard(&o, text_cb, NULL);
+    lv_obj_send_event(lv_obj_get_child(lv_obj_get_child(kb_panel(), 0), 1), LV_EVENT_CLICKED, NULL); /* a tap on the field */
+    EXPECT(!kb_compact(), "a tap on the field brings the on-screen keys");
+    close_all();
+    l5_keyboard(&o, text_cb, NULL);
+    shots_kbd_present = false;
+    settle(600); /* the caret's 500 ms timer looks for the keyboard */
+    EXPECT(!kb_compact(), "keyboard pulled out: the on-screen keys");
+    shots_kbd_present = true;
+    settle(600);
+    EXPECT(kb_compact(), "plugged in again: only the field and the bar");
+    lv_obj_send_event(lv_obj_get_child(lv_obj_get_child(kb_panel(), -1), -1), LV_EVENT_CLICKED, NULL); /* OK on the bar */
+    EXPECT(!strcmp(s_text, "x") && !layer_n(), "OK on the bar (%s)", s_text);
+}
+
+static void home_keys(void)
+{
+    g_slots.n = 3;
+    g_slots.slot_kb = 4096;
+    g_slots.scheme = "Custom";
+    g_slots.boot = 0;
+    slot_set(0, "Sensor-Hub-3.0.1", "sensor_hub", "3.0.1", "SD", "2026-10-09", "Oct 2 2026", 2726297);
+    slot_set(1, NULL, NULL, NULL, NULL, NULL, NULL, 0);
+    slot_set(2, "Pixel Paint", "pixel_paint", "1.2.0", "OTA", "2026-10-18", "Sep 30 2026", 1992294);
+    l5_ui_go(L5_VIEW_HOME);
+    int selects = shots_selects, boots = shots_boots;
+    KEY(RIGHT);
+    EXPECT(g_slots.boot == 2 && shots_selects == selects + 1, "HOME: Right skips the empty slot (boot %d)", g_slots.boot);
+    KEY(DOWN);
+    EXPECT(g_slots.boot == 2, "HOME: Down at the last app stays (boot %d)", g_slots.boot);
+    KEY(UP);
+    EXPECT(g_slots.boot == 0, "HOME: Up = the previous app (boot %d)", g_slots.boot);
+    KEY(LEFT);
+    EXPECT(g_slots.boot == 0, "HOME: Left at the first app stays (boot %d)", g_slots.boot);
+    KEY(ENTER);
+    EXPECT(shots_boots == boots + 1, "HOME: Enter = BOOT");
+    g_slots.boot = -1; /* flashed by hand, not chosen yet */
+    l5_ui_go(L5_VIEW_HOME);
+    KEY(ENTER);
+    EXPECT(shots_boots == boots + 1, "HOME: Enter without a chosen app boots nothing");
+    KEY(LEFT);
+    EXPECT(g_slots.boot == 2, "HOME: Left without a choice = the last installed app (boot %d)", g_slots.boot);
+    g_slots.boot = -1;
+    KEY(RIGHT);
+    EXPECT(g_slots.boot == 0, "HOME: Right without a choice = the first installed app (boot %d)", g_slots.boot);
+    g_slots.n = 1;
+    g_slots.slot_kb = 11264;
+    g_slots.boot = -1;
+    slot_set(0, "Aurora-Player-1.3.21-Application", "tab5_player", "1.3.21", "SD", "2026-10-19", "Oct 18 2026", 6344736);
+    slot_set(2, NULL, NULL, NULL, NULL, NULL, NULL, 0);
+    l5_ui_go(L5_VIEW_HOME);
+    KEY(RIGHT);
+    EXPECT(g_slots.boot == -1, "HOME, one slot: arrows do nothing (boot %d)", g_slots.boot);
+    KEY(ENTER);
+    EXPECT(g_slots.boot == 0 && shots_boots == boots + 2, "HOME, one slot: Enter = BOOT, app0 becomes the boot app");
+    slot_set(0, NULL, NULL, NULL, NULL, NULL, NULL, 0);
+    l5_ui_go(L5_VIEW_HOME);
+    KEY(ENTER);
+    EXPECT(l5_ui_view() == L5_VIEW_SD, "HOME, empty slot: Enter = INSTALL FROM SD (view %d)", l5_ui_view());
+}
+
+static const char *sd_sel(void)
+{
+    static l5_sd_target_t t;
+    return l5_sd_target(&t) && !t.is_cwd ? t.name : "";
+}
+
+static bool on_card(const char *rel)
+{
+    char p[400];
+    struct stat st;
+    snprintf(p, sizeof(p), "%s/%s", CARD, rel);
+    return stat(p, &st) == 0;
+}
+
+static void sd_open(const char *cwd, const char *select)
+{
+    l5_ui_go(L5_VIEW_SD);
+    l5_sd_after_op(cwd, select);
+    settle(100);
+}
+
+static void sd_keys(void)
+{
+    char cwd[400], last[128];
+    sd_open(CARD, NULL);
+    KEY(DOWN);
+    EXPECT(!strcmp(sd_sel(), "bins"), "SD: Down from no selection = the first row (%s)", sd_sel());
+    KEY(END);
+    strlcpy(last, sd_sel(), sizeof(last));
+    EXPECT(!strcmp(last, "README.md"), "SD: End = the last row (%s)", last);
+    KEY(DOWN);
+    EXPECT(!strcmp(sd_sel(), last), "SD: Down at the last row stays (%s)", sd_sel());
+    KEY(HOME);
+    KEY(UP);
+    EXPECT(!strcmp(sd_sel(), "bins"), "SD: Home, Up at the first row stays (%s)", sd_sel());
+    sd_open(CARD, NULL);
+    KEY(UP);
+    EXPECT(!strcmp(sd_sel(), last), "SD: Up from no selection = the last row (%s)", sd_sel());
+
+    sd_open(CARD, "duzy-folder");
+    KEY(ENTER);
+    l5_sd_cwd_path(cwd, sizeof(cwd));
+    EXPECT(strstr(cwd, "/duzy-folder") != NULL, "SD: Enter on a folder opens it (%s)", cwd);
+    KEY(DOWN);
+    KEY(PGDN);
+    EXPECT(!strcmp(sd_sel(), "plik-008.bin"), "SD: PgDn = 8 rows on (%s)", sd_sel());
+    KEY(PGDN);
+    KEY(PGUP);
+    EXPECT(!strcmp(sd_sel(), "plik-008.bin"), "SD: PgDn, PgUp = back 8 rows (%s)", sd_sel());
+    KEY(END);
+    EXPECT(!strcmp(sd_sel(), "plik-199.bin"), "SD: End = the last of the 200 rows (%s)", sd_sel());
+    KEY(ESC);
+    l5_sd_cwd_path(cwd, sizeof(cwd));
+    EXPECT(!strstr(cwd, "duzy") && !strcmp(sd_sel(), "duzy-folder"), "SD: Esc = UP, the folder stays selected (%s, %s)",
+           cwd, sd_sel());
+    KEY(ENTER);
+    KEY(BACKSPACE);
+    l5_sd_cwd_path(cwd, sizeof(cwd));
+    EXPECT(!strstr(cwd, "duzy"), "SD: Backspace = UP (%s)", cwd);
+
+    sd_open(CARD, "long.txt");
+    KEY(ENTER);
+    EXPECT(layer_n() == 1, "SD: Enter on a text file = VIEW");
+    lv_obj_t *body = lv_obj_get_child(lv_obj_get_child(lv_obj_get_child(l5_ui_layer(), 0), 0), 2);
+    KEY(PGDN);
+    int32_t y1 = lv_obj_get_scroll_y(body);
+    KEY(DOWN);
+    int32_t y2 = lv_obj_get_scroll_y(body);
+    KEY(END);
+    int32_t y3 = lv_obj_get_scroll_y(body);
+    KEY(HOME);
+    int32_t y4 = lv_obj_get_scroll_y(body);
+    EXPECT(y1 > 0 && y2 == y1 + 48 && y3 > y2 && y4 == 0, "VIEW scrolls: PgDn %d, Down %d, End %d, Home %d", (int)y1,
+           (int)y2, (int)y3, (int)y4);
+    KEY(ENTER);
+    EXPECT(!layer_n(), "VIEW: Enter closes it");
+
+    sd_open(CARD, "Aurora-Player-1.3.21.bin");
+    KEY(ENTER);
+    EXPECT(layer_n() == 1, "SD: Enter on an installable .bin = INSTALL (the PC's installer answers with a dialog)");
+    KEY(ESC);
+    EXPECT(!layer_n(), "SD: Esc closes the answer");
+    sd_open(CARD, "config.conf");
+    KEY(DELETE);
+    EXPECT(layer_n() == 1, "SD: Delete = DELETE");
+    KEY(ESC);
+    EXPECT(!layer_n() && on_card("config.conf"), "SD: Esc = CANCEL, the file stays");
+    sd_open(CARD, NOTES);
+    CTRL('c');
+    sd_open(CARD "/logs", NULL);
+    CTRL('v');
+    settle(200);
+    close_all();
+    EXPECT(on_card("logs/" NOTES), "SD: Ctrl+C on a file, Ctrl+V in another folder copies it");
+    sd_open(CARD, NULL);
+    CTRL('n');
+    EXPECT(layer_n() == 1, "SD: Ctrl+N = NEW FOLDER");
+    CTRL('u');
+    CHR('k');
+    CHR('e');
+    CHR('y');
+    CHR('s');
+    KEY(ENTER);
+    settle(100);
+    close_all();
+    EXPECT(on_card("keys"), "SD: a folder named on the keyboard");
+    sd_open(CARD, "keys");
+    CTRL('r');
+    EXPECT(layer_n() == 1, "SD: Ctrl+R = RENAME");
+    KEY(ESC);
+    EXPECT(!layer_n() && on_card("keys"), "SD: Esc leaves the name");
+}
+
+static void ota_keys(void)
+{
+    int picks = shots_wifi_picks, whys = shots_wifi_whys;
+    shots_wifi_state = L5_WIFI_OFF;
+    l5_ui_go(L5_VIEW_OTA);
+    KEY(ENTER);
+    EXPECT(shots_wifi_picks == picks + 1, "OTA without Wi-Fi: Enter = CONNECT");
+    shots_wifi_state = L5_WIFI_CONNECTING;
+    l5_ui_go(L5_VIEW_OTA);
+    KEY(ENTER);
+    EXPECT(shots_wifi_picks == picks + 1 && shots_wifi_whys == whys, "OTA while connecting: Enter does nothing");
+    shots_wifi_state = L5_WIFI_FAILED;
+    l5_ui_go(L5_VIEW_OTA);
+    KEY(ENTER);
+    EXPECT(shots_wifi_whys == whys + 1, "OTA after a Wi-Fi failure: Enter = WHY NO WI-FI");
+    shots_wifi_state = L5_WIFI_CONNECTED;
+    l5_ui_go(L5_VIEW_OTA);
+    CHR('/');
+    EXPECT(layer_n() == 1, "OTA: / = search");
+    KEY(ESC);
+    CTRL('f');
+    EXPECT(layer_n() == 1, "OTA: Ctrl+F = search");
+    KEY(ESC);
+    CHR('f');
+    EXPECT(!layer_n(), "OTA: f without Ctrl types nothing");
+
+    shots_favs = 3; /* FAVORITES: three catalog entries */
+    l5_ui_go(L5_VIEW_OTA);
+    lv_obj_t *m = lv_obj_get_child(lv_obj_get_child(lv_screen_active(), L5_VIEW_OTA), 0);
+    lv_obj_send_event(lv_obj_get_child(lv_obj_get_child(m, 0), 2), LV_EVENT_CLICKED, NULL); /* the FAVORITES chip */
+    settle(50);
+    close_all(); /* no toast left from before */
+    m = lv_obj_get_child(lv_obj_get_child(lv_screen_active(), L5_VIEW_OTA), 0);
+    lv_obj_t *list = lv_obj_get_child(m, 2);
+    KEY(ENTER);
+    EXPECT(!lv_obj_get_child_count(l5_ui_toasts()), "OTA: Enter with no row selected does nothing");
+#define OTA_ROW(i) lv_obj_has_state(lv_obj_get_child(list, (i)), LV_STATE_CHECKED)
+    KEY(DOWN);
+    EXPECT(lv_obj_get_child_count(list) == 3 && OTA_ROW(0) && !OTA_ROW(1), "OTA: Down from no selection = the first row");
+    KEY(END);
+    EXPECT(OTA_ROW(2) && !OTA_ROW(0), "OTA: End = the last row");
+    KEY(PGUP);
+    EXPECT(OTA_ROW(0) && !OTA_ROW(2), "OTA: PgUp = 6 rows back, at most to the first");
+    KEY(PGDN);
+    EXPECT(OTA_ROW(2), "OTA: PgDn = 6 rows on, at most to the last");
+    KEY(UP);
+    EXPECT(OTA_ROW(1) && !OTA_ROW(2), "OTA: Up = the row above");
+#undef OTA_ROW
+    KEY(ENTER); /* INSTALL: the versions are not fetched on the PC, so it asks to wait */
+    lv_obj_t *toast = lv_obj_get_child(l5_ui_toasts(), 0);
+    EXPECT(toast && !strcmp(lv_label_get_text(toast), "Wait for the version list"), "OTA: Enter = INSTALL (%s)",
+           toast ? lv_label_get_text(toast) : "no toast");
+    close_all();
+    shots_favs = 0;
+}
+
+static void cfg_keys(void)
+{
+    g_cfg.bright = 70;
+    g_cfg.rot = 0;
+    strlcpy(g_cfg.color, "red", sizeof(g_cfg.color));
+    l5_ui_go(L5_VIEW_CFG);
+    KEY(RIGHT);
+    EXPECT(g_cfg.bright == 70, "CFG: Right before the ring is on a row does nothing (%d)", g_cfg.bright);
+    KEY(DOWN);
+    KEY(RIGHT);
+    EXPECT(g_cfg.bright == 75, "CFG: Right on Brightness = + (%d)", g_cfg.bright);
+    KEY(LEFT);
+    KEY(LEFT);
+    EXPECT(g_cfg.bright == 65, "CFG: Left = - (%d)", g_cfg.bright);
+    KEY(RIGHT);
+    KEY(DOWN);
+    KEY(DOWN);
+    KEY(DOWN); /* UI color */
+    KEY(RIGHT);
+    EXPECT(!strcmp(g_cfg.color, "orange"), "CFG: Right on UI color = the next swatch (%s)", g_cfg.color);
+    KEY(LEFT);
+    KEY(LEFT);
+    EXPECT(!strcmp(g_cfg.color, "magenta"), "CFG: Left goes round to the last swatch (%s)", g_cfg.color);
+    KEY(RIGHT);
+    KEY(DOWN); /* Rotation */
+    KEY(ENTER);
+    EXPECT(g_cfg.rot == 180, "CFG: Enter on Rotation = a tap on it (%d)", g_cfg.rot);
+    KEY(ENTER);
+    if (s_key_shots) shot("53_keys_cfg_ring");
+    l5_ui_go(L5_VIEW_CFG); /* rebuilt */
+    lv_obj_t *col = lv_obj_get_child(lv_obj_get_child(lv_screen_active(), L5_VIEW_CFG), 0);
+    EXPECT(ring(lv_obj_get_child(lv_obj_get_child(col, 1), 4)), "CFG rebuilt: the ring stays on Rotation");
+    KEY(HOME);
+    KEY(UP);
+    KEY(ENTER);
+    EXPECT(ring(lv_obj_get_child(lv_obj_get_child(col, 1), 0)) && g_cfg.bright == 70 && g_cfg.rot == 0,
+           "CFG: Home, Up stays on Brightness, Enter there does nothing");
+    KEY(END);
+    lv_obj_t *sys = lv_obj_get_child(lv_obj_get_child(lv_screen_active(), L5_VIEW_CFG), 2);
+    EXPECT(ring(lv_obj_get_child(lv_obj_get_child(sys, 1), -1)), "CFG: End = the last row (Turn off)");
+}
+
+static void charge_keys(void)
+{
+    l5_charge_mode();
+    KEY(DOWN);
+    EXPECT(lv_obj_get_child_count(l5_ui_sys()) == 1, "Charge Mode: other keys do nothing");
+    KEY(ENTER);
+    EXPECT(!lv_obj_get_child_count(l5_ui_sys()), "Charge Mode: Enter goes back to the launcher");
+    l5_charge_mode();
+    KEY(ESC);
+    EXPECT(!lv_obj_get_child_count(l5_ui_sys()), "Charge Mode: Esc goes back to the launcher");
+    l5_ui_set_booted(true);
+}
+
+static int keys_test(void)
+{
+    int before = s_fails;
+    shots_kbd_present = true;
+    l5_ui_set_booted(true);
+    global_keys();
+    dialog_keys();
+    keyboard_keys();
+    home_keys();
+    sd_keys();
+    ota_keys();
+    cfg_keys();
+    charge_keys();
+    close_all();
+    shots_kbd_present = false;
+    int fails = s_fails - before;
+    printf(fails ? "keys: FAILED %d\n" : "keys: tabs, wake, dialogs, menus, VIEW, progress, text field, HOME, SD, OTA, "
+           "CFG, Charge Mode PASSED\n", fails);
+    return fails ? 1 : 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2) return 2;
-    bool idle = !strcmp(argv[1], "--idle"), taps = !strcmp(argv[1], "--taps");
+    bool idle = !strcmp(argv[1], "--idle"), taps = !strcmp(argv[1], "--taps"), keys = !strcmp(argv[1], "--keys");
     s_out = argv[1];
     l5_files_root = CARD;
     l5_files_host_total = 29ull << 30;
@@ -541,7 +1068,9 @@ int main(int argc, char **argv)
 
     l5_theme_init(0xe3171f);
     l5_ui_init(); /* the launcher's screen: views, top bar, layers, veil, idle timer */
+    l5_keys_init(); /* the Tab5 Keyboard's keys (views_stubs.c: none unless a test types) */
     if (idle) return idle_test();
+    if (keys) return keys_test();
     if (taps) {
         l5_ui_go(L5_VIEW_HOME);
         lv_obj_update_layout(lv_screen_active());
@@ -607,6 +1136,8 @@ int main(int argc, char **argv)
     close_all();
     l5_sd_after_op(CARD "/duzy-folder", "plik-199.bin");
     shot("16_big_folder");
+    s_key_shots = true; /* 50..53: the focus ring and the keyboard bar */
+    int r = keys_test();
     printf("%d shots\n", s_shots);
-    return 0;
+    return r;
 }

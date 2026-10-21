@@ -5,6 +5,7 @@
 #include "esp_err.h"
 #include "lvgl.h"
 #include "l5_fw.h"
+#include "l5_kbd.h"
 #include "l5_theme.h"
 
 typedef enum {
@@ -33,6 +34,17 @@ lv_obj_t *l5_ui_sys(void);       /* #sys: boot / app / off / charge screens */
 lv_obj_t *l5_ui_toasts(void);    /* .toast container, above #sys */
 void l5_ui_set_booted(bool booted); /* R.booted: idle dimming and screen off only run inside the launcher */
 void l5_ui_wake(void);           /* undo idle dimming / screen off (dialogs call it when they open) */
+bool l5_ui_asleep(void);         /* dimmed or dark: the next tap or key only wakes the screen */
+
+/* ---------- keyboard keys (l5_keys.c): the M5Stack Tab5 Keyboard in the whole UI ---------- */
+void l5_keys_init(void);         /* after l5_ui_init: a 20 ms timer takes the keys and sends them on */
+uint32_t l5_key_event(void);     /* LVGL event code of a key sent to a dialog; lv_event_get_param() is the l5_key_t */
+/* the visible tab's keys; true when the key did something */
+bool l5_home_key(const l5_key_t *k);
+bool l5_sd_key(const l5_key_t *k);
+bool l5_ota_key(const l5_key_t *k);
+bool l5_cfg_key(const l5_key_t *k);
+bool l5_sys_key(const l5_key_t *k); /* a system screen is up (l5_sys.c) */
 
 /* ---------- top bar (l5_topbar.c) ---------- */
 void l5_topbar_create(lv_obj_t *screen);

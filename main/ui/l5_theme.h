@@ -65,6 +65,7 @@ typedef struct {
     lv_style_t press_ring;   /* LV_STATE_PRESSED on swatches, cards, map segments: white outline */
     lv_style_t tgl_on;       /* LV_STATE_CHECKED on a toggle track: accent with glow */
     lv_style_t swatch_sel;   /* LV_STATE_CHECKED on the selected colour swatch */
+    lv_style_t focus;        /* LV_STATE_FOCUS_KEY: what the keyboard points at (button, menu item, CFG row) */
 } l5_styles_t;
 
 extern l5_palette_t L5P;
