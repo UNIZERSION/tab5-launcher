@@ -13,7 +13,8 @@ and with the launcher's patched copy (all must match). ui/shots.c --idle runs l5
 dim, screen off (backlight 0, drawing paused), wake by a tap, by a dialog and by a system screen; ui/shots.c
 --taps checks what taps at the edges of the top bar's keys, in the gaps and around Wi-Fi / power hit, then Charge
 Mode's state line on a run of current readings (l5_board.h l5_charge_next) and that HOME's redraw bench (compiled
-here with L5_HOME_BENCH=1, off in the firmware) puts the view back; ui/shots.c --keys types on a stand-in M5Stack Tab5
+here with L5_HOME_BENCH=1, off in the firmware) puts the view back, and that CFG's dark gradient is dithered
+(l5_dither.c: 4 x 4 blocks mix RGB565 levels and average to the ideal gradient); ui/shots.c --keys types on a stand-in M5Stack Tab5
 Keyboard: tabs, waking, dialogs, menus, the text viewer, progress, the text field, HOME, SD, OTA, CFG, Charge Mode
 (l5_keys.c and the handlers, as in the original build of 20.10.2026). test_guard.c
 runs the guard's decision for every reset reason and state and the boot loops through it (OrcSDR's clean restart

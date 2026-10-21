@@ -19,7 +19,7 @@ void l5w_apps_erased(char *out, size_t len)
 lv_obj_t *l5w_pane(lv_obj_t *view, bool dark, int32_t x, int32_t w)
 {
     lv_obj_t *p = l5_box(view);
-    lv_obj_add_style(p, dark ? &L5S.dark : &L5S.plate, 0);
+    l5_panel(p, dark);
     lv_obj_set_pos(p, x, L5_PANEL_Y);
     lv_obj_set_size(p, w, L5_PANEL_H);
     lv_obj_set_flex_flow(p, LV_FLEX_FLOW_COLUMN);

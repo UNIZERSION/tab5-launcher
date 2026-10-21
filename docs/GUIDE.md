@@ -418,7 +418,7 @@ No known bugs so far.
 
 **Not yet tested on the device**
 
-These features are in the launcher but have not been tested on the Tab5 yet: resuming an OTA download after the connection drops (including RETRY), CANCEL during a download, \[UPDATE ALL\], favorites and ADD LINK, the APP ONLY / APP + DATA choice and Avoid SPIFFS. In the SD tab: copy and paste, rename, new folder and text preview. In the boot-loop guard: BOOT AGAIN and RESET while the "… was stopped" dialog is open. Restored from the build of 2026-10-20 and not tested on the device yet: the M5Stack Tab5 Keyboard and its keys in the whole launcher, putting config.conf back, WHY NO WI-FI, the NO DISPLAY stop, apps that wait until they are chosen, installing with little internal RAM.
+These features are in the launcher but have not been tested on the Tab5 yet: resuming an OTA download after the connection drops (including RETRY), CANCEL during a download, \[UPDATE ALL\], favorites and ADD LINK, the APP ONLY / APP + DATA choice and Avoid SPIFFS. In the SD tab: copy and paste, rename, new folder and text preview. In the boot-loop guard: BOOT AGAIN and RESET while the "… was stopped" dialog is open. Restored from the build of 2026-10-20 and not tested on the device yet: the M5Stack Tab5 Keyboard and its keys in the whole launcher, the dithered (band-free) gradients of the panels, buttons and top bar, putting config.conf back, WHY NO WI-FI, the NO DISPLAY stop, apps that wait until they are chosen, installing with little internal RAM.
 
 **What comes next**
 

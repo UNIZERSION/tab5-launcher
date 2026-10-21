@@ -2,6 +2,7 @@
 #pragma once
 #include "lvgl.h"
 #include "fonts/l5_fonts.h"
+#include "l5_dither.h"
 #include "l5_icons.h"
 
 /* :root tokens (device screen, same in both page themes) */

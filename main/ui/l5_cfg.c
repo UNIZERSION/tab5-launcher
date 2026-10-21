@@ -414,7 +414,7 @@ static void color_cb(lv_event_t *e)
 static lv_obj_t *column(lv_obj_t *view, int i, const char *title)
 {
     lv_obj_t *c = l5_box(view);
-    lv_obj_add_style(c, &L5S.dark, 0);
+    l5_panel(c, true);
     lv_obj_set_pos(c, 12 + i * 423, L5_PANEL_Y);
     lv_obj_set_size(c, 410, L5_PANEL_H);
     lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);

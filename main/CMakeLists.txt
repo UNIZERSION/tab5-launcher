@@ -6,7 +6,7 @@ idf_component_register(
          "ui/l5_theme.c" "ui/l5_ui.c" "ui/l5_topbar.c" "ui/l5_home.c" "ui/l5_sys.c"
          "ui/l5_dialogs.c" "ui/l5_cover.c" "ui/l5_views.c" "ui/l5_widgets.c" "ui/l5_sd.c" "ui/l5_pman.c"
          "ui/l5_cfg.c" "ui/l5_keyboard.c" "ui/l5_wifi_ui.c" "ui/l5_inst_ui.c" "ui/l5_ota.c"
-         "ui/l5_sd_ops.c" "ui/l5_charge.c" "ui/l5_keys.c"
+         "ui/l5_sd_ops.c" "ui/l5_charge.c" "ui/l5_keys.c" "ui/l5_dither.c"
          ${FONT_SRCS}
     INCLUDE_DIRS "." "ui"
     PRIV_INCLUDE_DIRS "../bootloader_components/main" # l5_guard.h: the boot-loop guard's registers

@@ -1115,7 +1115,7 @@ static lv_obj_t *chip(lv_obj_t *parent, const char *icon, const char *text, cons
 static lv_obj_t *pane(lv_obj_t *view, bool dark, int32_t x, int32_t w)
 {
     lv_obj_t *p = l5_box(view);
-    lv_obj_add_style(p, dark ? &L5S.dark : &L5S.plate, 0);
+    l5_panel(p, dark);
     lv_obj_set_pos(p, x, L5_PANEL_Y);
     lv_obj_set_size(p, w, L5_PANEL_H);
     lv_obj_set_flex_flow(p, LV_FLEX_FLOW_COLUMN);

@@ -164,19 +164,8 @@ static void draw(lv_obj_t *canvas, int32_t W, const char *seed, const char *titl
     lv_canvas_init_layer(canvas, &layer);
     c.layer = &layer;
 
-    lv_draw_rect_dsc_t bg;
-    lv_draw_rect_dsc_init(&bg);
-    bg.bg_color = lv_color_hex(0x1d1f23);
-    bg.bg_grad.dir = LV_GRAD_DIR_VER;
-    bg.bg_grad.stops_count = 2;
-    bg.bg_grad.stops[0].color = lv_color_hex(0x1d1f23);
-    bg.bg_grad.stops[0].opa = LV_OPA_COVER;
-    bg.bg_grad.stops[0].frac = 0;
-    bg.bg_grad.stops[1].color = lv_color_hex(0x0b0c0e);
-    bg.bg_grad.stops[1].opa = LV_OPA_COVER;
-    bg.bg_grad.stops[1].frac = 255;
-    lv_area_t all = {0, 0, W - 1, H - 1};
-    lv_draw_rect(&layer, &bg, &all);
+    lv_area_t all = {0, 0, W - 1, H - 1}; /* background: #1d1f23 -> #0b0c0e, dithered (l5_dither.c) */
+    l5_grad_draw(&layer, l5_grad_key(lv_color_hex(0x1d1f23), lv_color_hex(0x0b0c0e), 255), &all);
 
     /* fine grid */
     const float g = W / 18.0f;
@@ -206,18 +195,12 @@ static void draw(lv_obj_t *canvas, int32_t W, const char *seed, const char *titl
 
     lv_draw_rect_dsc_t chip;
     lv_draw_rect_dsc_init(&chip);
-    chip.bg_grad.dir = LV_GRAD_DIR_VER;
-    chip.bg_grad.stops_count = 2;
-    chip.bg_grad.stops[0].color = lv_color_hex(0x34373d);
-    chip.bg_grad.stops[0].opa = LV_OPA_COVER;
-    chip.bg_grad.stops[0].frac = 0;
-    chip.bg_grad.stops[1].color = lv_color_hex(0x16171a);
-    chip.bg_grad.stops[1].opa = LV_OPA_COVER;
-    chip.bg_grad.stops[1].frac = 255;
+    chip.bg_opa = LV_OPA_TRANSP; /* the body #34373d -> #16171a is drawn dithered under it: this is the border */
     chip.border_color = L5_WHITE;
     chip.border_opa = 46;
     chip.border_width = (int32_t)(2 * f) < 1 ? 1 : (int32_t)(2 * f);
     lv_area_t ca = {(int32_t)cx, (int32_t)cy, (int32_t)(cx + cs) - 1, (int32_t)(cy + cs) - 1};
+    l5_grad_draw(&layer, l5_grad_key(lv_color_hex(0x34373d), lv_color_hex(0x16171a), 255), &ca);
     lv_draw_rect(&layer, &chip, &ca);
     circle(&c, cx + 18 * f, cy + 18 * f, 6 * f, c.accent);
 

@@ -614,25 +614,19 @@ static bool clip_to(lv_area_t *out, const lv_area_t *a, const lv_area_t *b)
     return out->x1 <= out->x2 && out->y1 <= out->y2;
 }
 
-/* The big card covers most of the panel and paints its own background, so the panel paints its gradient only around
-   it: one pass over the ~1218 x 542 card instead of two (the draw buffers are in PSRAM). The hole is 4 px smaller than
-   the card, so its round corners still show the panel. Same pixels as before; L5S.dark's gradient over the whole
-   panel, each part clipped. */
+/* The panel's background, L5S.dark's gradient dithered (l5_dither.c), for every layout. The big card covers most of
+   the panel and paints its own background, so with it the panel paints its gradient only around it: one pass over the
+   ~1218 x 542 card instead of two (the draw buffers are in PSRAM). The hole is 4 px smaller than the card, so its
+   round corners still show the panel. The gradient spans the whole panel, each part clipped. */
 static void panel_bg_cb(lv_event_t *e)
 {
     lv_obj_t *panel = lv_event_get_current_target(e);
     lv_layer_t *layer = lv_event_get_layer(e);
     lv_area_t pa, hole;
     lv_obj_get_coords(panel, &pa);
-    lv_draw_rect_dsc_t d;
-    lv_draw_rect_dsc_init(&d);
-    d.bg_color = L5_PANEL_2;
-    d.bg_grad.dir = LV_GRAD_DIR_VER;
-    d.bg_grad.stops_count = 2;
-    d.bg_grad.stops[0] = (lv_grad_stop_t){.color = L5_PANEL_2, .opa = LV_OPA_COVER, .frac = 0};
-    d.bg_grad.stops[1] = (lv_grad_stop_t){.color = L5_PANEL, .opa = LV_OPA_COVER, .frac = 255};
+    const l5_grad_key_t *g = l5_grad_key(L5_PANEL_2, L5_PANEL, 255);
     if (H.panel_full || !H.hero_card || lv_obj_has_flag(H.hero_card, LV_OBJ_FLAG_HIDDEN)) {
-        lv_draw_rect(layer, &d, &pa);
+        l5_grad_draw(layer, g, &pa);
         return;
     }
     lv_obj_get_coords(H.hero_card, &hole);
@@ -648,7 +642,7 @@ static void panel_bg_cb(lv_event_t *e)
         lv_area_t c;
         if (!clip_to(&c, &clip, &parts[i])) continue;
         layer->_clip_area = c;
-        lv_draw_rect(layer, &d, &pa);
+        l5_grad_draw(layer, g, &pa);
     }
     layer->_clip_area = clip;
 }
@@ -672,9 +666,7 @@ static void hero(lv_obj_t *panel)
     lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     if (g_slots.slot[0].used) {
         hero_used(card);
-        H.hero_card = card;
-        lv_obj_set_style_bg_opa(panel, LV_OPA_TRANSP, 0); /* panel_bg_cb paints it, without the card's area */
-        lv_obj_add_event_cb(panel, panel_bg_cb, LV_EVENT_DRAW_MAIN_BEGIN, NULL);
+        H.hero_card = card; /* panel_bg_cb leaves out its area */
     } else {
         hero_empty(card);
     }
@@ -789,6 +781,8 @@ void l5_home_render(lv_obj_t *view)
     lv_obj_t *panel = l5_box(view);
     lv_obj_add_event_cb(panel, home_deleted_cb, LV_EVENT_DELETE, NULL);
     lv_obj_add_style(panel, &L5S.dark, 0);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_TRANSP, 0); /* panel_bg_cb paints the gradient, dithered */
+    lv_obj_add_event_cb(panel, panel_bg_cb, LV_EVENT_DRAW_MAIN_BEGIN, NULL);
     lv_obj_set_pos(panel, 12, L5_PANEL_Y);
     lv_obj_set_size(panel, PANEL_W, PANEL_H);
     lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);

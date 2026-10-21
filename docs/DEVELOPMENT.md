@@ -77,9 +77,28 @@ strings do not show was written new, so the code is not the lost code, and none 
     survives a rebuild). The text field with the keyboard plugged in (`l5_keyboard.c`): the panel moves to the middle of
     the screen, the key rows are hidden and a bar shows "KEYBOARD · ENTER = OK · ESC = CANCEL · TAP THE FIELD FOR
     ON-SCREEN KEYS" with CANCEL / OK; the caret's 500 ms timer switches the layout when the keyboard comes or goes.
-  - Not restored yet from the same code: the Tab5 build draws the gradients of the dark and light panels itself with
-    ordered dithering (a draw-task hook and a cache of 64 gradients after `l5_keys.c`, 1 KB of initialized data); it
-    is not part of the key handling and is not in this source.
+- **Dithered gradients** (`main/ui/l5_dither.c`, new; rebuilt the same way from 0x40041e2e..0x40042544 of that build:
+  compiled here it gives the same 1814 bytes of code, apart from the addresses of four float constants). On the RGB565
+  panel LVGL's 2-stop vertical gradients show bands: L5S.dark (#1d1f23 -> #141518) changes red by 9 levels over 632 px,
+  so whole 60 px high stripes come out in one color. The module draws such a gradient from a 32 px wide RGB565 strip
+  built once with a 4 x 4 ordered (Bayer) dither (threshold (m + 0.5) / 16 per pixel, each channel rounded to the level
+  below or above in proportion) and tiles it over the area with `lv_draw_image` (`tile`, `clip_radius` = the object's
+  radius up to half the shorter side).
+  - `l5_dither_hook(obj)`: `LV_OBJ_FLAG_SEND_DRAW_TASK_EVENTS` + an `LV_EVENT_DRAW_TASK_ADDED` callback that takes the
+    object's LV_PART_MAIN fill task when it is a vertical gradient with 2 stops and all opacities at least 253, draws
+    the strip and sets the fill's opa to 0. `l5_panel(obj, dark)` = `L5S.dark` / `L5S.plate` + the hook.
+    `l5_grad_key()` + `l5_grad_draw()` do the same for custom drawing (falling back to `lv_draw_rect`).
+  - Where (as in that build): the panes and columns (`l5w_pane`, PMAN's pane, CFG's columns), the dialogs, the text
+    field's panel, every `l5_act_button`, the keys of the on-screen keyboard, the top bar (the bar, the tab track, the
+    tab keys, its graded strips), the bootscreen (background and ENTER LAUNCHER), HOME's panel (`panel_bg_cb`, now for
+    every layout) and the cover emblems (background, chip body). `sys_show()` sets a gradient only when the two colors
+    differ, so the black screens have none.
+  - Cache: up to 64 gradients (colors + stop positions, never dropped) and 128 strips keyed by gradient and height,
+    2 MB in PSRAM at most; when full, the strip drawn longest ago and not in the current frame (a frame counter on
+    `LV_EVENT_REFR_START`) is freed. No strip (no PSRAM, every strip in use this frame, taller than 4096 px): LVGL's
+    own gradient. A disable flag is read but nothing in that build sets it (`l5_dither_set_enabled()` is unused).
+  - PC test: `shots --taps` checks that CFG's dark column is dithered (every 4 x 4 block mixes levels and averages to
+    the ideal gradient within one 8-bit step; without the module: one color, 5 steps off).
 - **config.conf put back** (`l5_config_replace()`, `l5_sd_ops.c`): RENAME or PASTE onto `/config.conf` while the
   launcher's own file is there asks "Replace config.conf?"; the old file steps aside as `config.conf.old` for the swap, the
   settings apply at once (`l5_cfg_reload_now()`), a file that is not a JSON object leaves them as they are.
@@ -1270,6 +1289,7 @@ the default settings at once (the scheme stays), and a new file is created on th
 | `main/l5_pi4io.h` | registers of the second expander (PI4IOE5V6408 0x44) and the charger enable steps, shared by the firmware and the PC test |
 | `main/l5_kbd.c` | M5Stack Tab5 Keyboard on the side port (not in the prototype, which has `keydown`): own I2C bus, HID events turned into keys with auto-repeat |
 | `main/ui/l5_keys.c` | the keys in the UI: waking, tab switching, the topmost dialog / menu / text field, the system screen or the visible tab (not in the prototype) |
+| `main/ui/l5_dither.c` | ordered dithering of the vertical gradients for the RGB565 panel: strips cached in PSRAM (not in the prototype) |
 | `main/l5_wifi.c` | `R.wifi`, `S.savedWifi`, Wi-Fi in `L5.start`: ESP32-C6 over ESP-Hosted, scan, connecting, saved networks in NVS |
 | `main/l5_display.c` | panel + touch, LVGL → PPA → hidden DPI buffer, whole-frame publishing (from `..\aurora-player\components\tab5_hal\tab5_display.c`) |
 | `main/ui/l5_theme.c` | `:root` tokens and classes from launcher.css (`.plate`, `.dark`, `.act`, `.slot`, `.chamfer`…) |

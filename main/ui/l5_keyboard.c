@@ -355,6 +355,7 @@ static lv_obj_t *key_obj(kb_t *k, lv_obj_t *row, bool fn, int id)
     lv_obj_add_style(b, &s_key, 0);
     if (fn) lv_obj_add_style(b, &s_key_fn, 0);
     lv_obj_add_style(b, &s_key_pr, LV_STATE_PRESSED);
+    l5_dither_hook(b);
     lv_obj_set_height(b, KEY_H);
     lv_obj_set_user_data(b, (void *)(intptr_t)id);
     lv_obj_t *l = lv_label_create(b);
@@ -391,7 +392,7 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
 
     lv_obj_t *kb = l5_box(k->wrap); /* .kb.dark */
     k->kb = kb;
-    lv_obj_add_style(kb, &L5S.dark, 0);
+    l5_panel(kb, true);
     lv_obj_add_flag(kb, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_size(kb, L5_SCREEN_W, LV_SIZE_CONTENT);
     lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);

@@ -82,7 +82,7 @@ static lv_obj_t *scrim_create(dlg_t *d)
 static lv_obj_t *modal_create(lv_obj_t *scrim, int32_t width, const char *kind, const char *title)
 {
     lv_obj_t *m = l5_box(scrim);
-    lv_obj_add_style(m, &L5S.dark, 0);
+    l5_panel(m, true);
     lv_obj_add_flag(m, LV_OBJ_FLAG_CLICKABLE); /* taps inside do not reach the scrim */
     lv_obj_set_width(m, width);
     lv_obj_set_height(m, LV_SIZE_CONTENT);

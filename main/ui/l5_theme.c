@@ -326,6 +326,7 @@ lv_obj_t *l5_act_button(lv_obj_t *parent, const char *icon, const char *text, bo
     }
     lv_obj_add_style(b, &L5S.act_pressed, LV_STATE_PRESSED);
     lv_obj_add_style(b, &L5S.act_disabled, LV_STATE_DISABLED);
+    l5_dither_hook(b);
     if (icon) {
         l5_icon(b, &l5_icon_20, primary ? L5_WHITE : L5_ON_PANEL, icon);
     }

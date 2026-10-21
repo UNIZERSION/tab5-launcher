@@ -57,6 +57,7 @@ static lv_obj_t *rect(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, int32_t
     if (!lv_color_eq(top, bottom)) {
         lv_obj_set_style_bg_grad_color(r, bottom, 0);
         lv_obj_set_style_bg_grad_dir(r, LV_GRAD_DIR_VER, 0);
+        l5_dither_hook(r);
     }
     return r;
 }
@@ -187,6 +188,7 @@ void l5_topbar_create(lv_obj_t *screen)
     lv_obj_set_style_bg_grad_color(bar, L5_PLATE, 0);
     lv_obj_set_style_bg_grad_dir(bar, LV_GRAD_DIR_VER, 0);
     lv_obj_set_style_bg_grad_stop(bar, 158, 0); /* 62 % of 255 */
+    l5_dither_hook(bar);
     /* inset 0 1px 0 #fff as a rectangle: a top border would move every child 1 px down (LVGL counts it into the
        padding) and push the last row of the seam out of the bar */
     rect(bar, 0, 0, L5_SCREEN_W, 1, L5_WHITE, L5_WHITE);
@@ -230,6 +232,7 @@ void l5_topbar_create(lv_obj_t *screen)
     lv_obj_set_style_bg_color(grp, lv_color_hex(0xc2c4c9), 0);
     lv_obj_set_style_bg_grad_color(grp, lv_color_hex(0xdcdee2), 0);
     lv_obj_set_style_bg_grad_dir(grp, LV_GRAD_DIR_VER, 0);
+    l5_dither_hook(grp);
     lv_obj_set_style_border_width(grp, 1, 0);
     lv_obj_set_style_border_color(grp, L5_BLACK, 0);
     lv_obj_set_style_border_opa(grp, 26, 0);
@@ -284,6 +287,7 @@ void l5_topbar_create(lv_obj_t *screen)
         lv_obj_add_flag(t, LV_OBJ_FLAG_ADV_HITTEST);
         lv_obj_add_event_cb(t, tab_hit_cb, LV_EVENT_HIT_TEST, (void *)(intptr_t)i);
         lv_obj_add_event_cb(t, tab_ext_cb, LV_EVENT_REFR_EXT_DRAW_SIZE, NULL);
+        l5_dither_hook(t); /* the gradient of the selected key */
         lv_obj_refresh_ext_draw_size(t);
         s_tab[i] = t;
     }

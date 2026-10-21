@@ -42,8 +42,11 @@ static lv_obj_t *sys_show(lv_color_t top, lv_color_t bottom)
     lv_obj_add_flag(el, LV_OBJ_FLAG_CLICKABLE); /* blocks the launcher underneath */
     lv_obj_set_style_bg_opa(el, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(el, top, 0);
-    lv_obj_set_style_bg_grad_color(el, bottom, 0);
-    lv_obj_set_style_bg_grad_dir(el, LV_GRAD_DIR_VER, 0);
+    if (!lv_color_eq(top, bottom)) { /* the bootscreen; the black screens have no gradient */
+        lv_obj_set_style_bg_grad_color(el, bottom, 0);
+        lv_obj_set_style_bg_grad_dir(el, LV_GRAD_DIR_VER, 0);
+        l5_dither_hook(el);
+    }
     return el;
 }
 
@@ -251,6 +254,7 @@ void l5_boot_screen(void)
     lv_obj_set_style_bg_color(enter, L5P.accent, 0);
     lv_obj_set_style_bg_grad_color(enter, l5_mix(L5P.accent, lv_color_hex(0x2a0405), 110), 0);
     lv_obj_set_style_bg_grad_dir(enter, LV_GRAD_DIR_VER, 0);
+    l5_dither_hook(enter);
     lv_obj_set_style_transform_scale(enter, 245, LV_STATE_PRESSED);
     lv_obj_set_style_transform_pivot_x(enter, 150, 0);
     lv_obj_set_style_transform_pivot_y(enter, 150, 0);

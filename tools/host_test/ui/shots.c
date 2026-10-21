@@ -4,8 +4,8 @@
    11264 KB slot, Aurora from SD), an empty slot and two slots. tools/host_test/ui_shots.py builds and
    runs it: shots <output folder>; the card is the folder CONFIG_BSP_SD_MOUNT_POINT.
    shots --idle: dim, screen off and wake with l5_ui.c's own idle timer (run.py runs it).
-   shots --taps: what a tap at the edges of the top bar's keys and buttons hits, and HOME's redraw bench (a long press
-   on its header) putting every part back (run.py runs it).
+   shots --taps: what a tap at the edges of the top bar's keys and buttons hits, HOME's redraw bench (a long press
+   on its header) putting every part back and the dithered gradient of CFG's columns (run.py runs it).
    shots --keys: the M5Stack Tab5 Keyboard typed into the launcher (l5_keys.c and the views, dialogs, menus, text
    viewer, progress, on-screen keyboard and Charge Mode), as in the original build of 20.10.2026 (run.py runs it; the
    snapshots end with four of its scenes). */
@@ -528,6 +528,51 @@ static int bench_restore_test(void)
     free(before);
     printf(fails ? "bench: FAILED\n" : "bench: HOME's redraw bench runs and puts every part back PASSED\n");
     return fails;
+}
+
+/* l5_dither.c: CFG's dark columns (L5S.dark, #1d1f23 -> #141518 over 632 px) are dithered. Under the last row of
+   DISPLAY every 4 x 4 block mixes RGB565 levels and averages to the ideal gradient within one 8-bit step; LVGL's own
+   gradient leaves a single color there (a band) up to 5 steps off. */
+static int dither_test(void)
+{
+    static const int top[3] = {0x1d, 0x1f, 0x23}, bot[3] = {0x14, 0x15, 0x18};
+    const int x0 = 40, y0 = 640, y1 = 700, py = L5_TOPBAR_H + L5_PANEL_Y; /* the column spans py .. py + 631 */
+    l5_ui_go(L5_VIEW_CFG);
+    settle(300);
+    lv_obj_invalidate(lv_screen_active());
+    lv_refr_now(NULL);
+    int fails = 0, flat = 0;
+    double worst = 0;
+    for (int y = y0; y < y1; y += 4) {
+        double sum[3] = {0, 0, 0};
+        const uint16_t first = s_fb[y * W + x0];
+        bool mixed = false;
+        for (int yy = y; yy < y + 4; yy++) {
+            for (int x = x0; x < x0 + 64; x++) {
+                const uint16_t c = s_fb[yy * W + x];
+                mixed |= c != first;
+                sum[0] += (c >> 11) * 255 / 31;
+                sum[1] += ((c >> 5) & 63) * 255 / 63;
+                sum[2] += (c & 31) * 255 / 31;
+            }
+        }
+        flat += !mixed;
+        const double t = (y + 1.5 - py) / (L5_PANEL_H - 1);
+        for (int i = 0; i < 3; i++) {
+            const double e = sum[i] / 256 - (top[i] + (bot[i] - top[i]) * t);
+            if (e > worst || -e > worst) worst = e < 0 ? -e : e;
+        }
+    }
+    if (flat) {
+        fails++;
+        printf("  FAIL: %d of %d blocks under DISPLAY have one color (not dithered)\n", flat, (y1 - y0) / 4);
+    }
+    if (worst > 1.0) {
+        fails++;
+        printf("  FAIL: a 4 x 4 block averages %.2f steps off the gradient\n", worst);
+    }
+    printf(fails ? "dither: FAILED\n" : "dither: CFG's dark gradient dithered, blocks within %.2f of the ideal PASSED\n", worst);
+    return fails ? 1 : 0;
 }
 
 /* ---------- the Tab5 Keyboard: what each part of the launcher does with a key ---------- */
@@ -1076,7 +1121,8 @@ int main(int argc, char **argv)
         lv_obj_update_layout(lv_screen_active());
         int r = taps_test();
         r = charge_state_test() || r;
-        return bench_restore_test() || r;
+        r = bench_restore_test() || r;
+        return dither_test() || r;
     }
     home_shots();
     l5_ui_go(L5_VIEW_SD);
