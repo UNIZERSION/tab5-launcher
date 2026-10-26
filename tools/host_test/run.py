@@ -11,9 +11,9 @@ l5_files.c on a folder of the work directory that stands in for the SD card. tes
 glyphs of the compressed fonts from two threads with LVGL's own lv_font_fmt_txt.c (garbled glyphs expected)
 and with the launcher's patched copy (all must match). ui/shots.c --idle runs l5_ui.c's idle timer on the PC:
 dim, screen off (backlight 0, drawing paused), wake by a tap, by a dialog and by a system screen; ui/shots.c
---taps checks what taps at the edges of the top bar's keys, in the gaps and around Wi-Fi / power hit, then Charge
-Mode's state line on a run of current readings (l5_board.h l5_charge_next) and that HOME's redraw bench (compiled
-here with L5_HOME_BENCH=1, off in the firmware) puts the view back, and that CFG's dark gradient is dithered
+--taps checks what taps at the edges of the rail's tabs and around Wi-Fi / power hit, then Charge Mode's state line
+on a run of current readings (l5_board.h l5_charge_next), the bootscreen (its countdown, the tap that stops it, the
+chips of the other apps, a key, no app), and that CFG's dark gradient is dithered
 (l5_dither.c: 4 x 4 blocks mix RGB565 levels and average to the ideal gradient); ui/shots.c --keys types on a stand-in M5Stack Tab5
 Keyboard: tabs, waking, dialogs, menus, the text viewer, progress, the text field, HOME, SD, OTA, CFG, Charge Mode
 (l5_keys.c and the handlers, as in the original build of 20.10.2026). test_guard.c
@@ -29,8 +29,8 @@ build of the firmware (build/tab5_launcher.bin, build/bootloader/bootloader.bin,
   python tools/host_test/run.py --scan firmware.bin ...   (only the old-hardware rule on these images)
   python tools/host_test/run.py --files                    (only the file operations)
   python tools/host_test/run.py --fonts                    (only the font decompression with two threads)
-  python tools/host_test/run.py --idle                     (only dim / screen off / wake, top bar taps, charge state,
-                                                            the Tab5 Keyboard's keys)
+  python tools/host_test/run.py --idle                     (only dim / screen off / wake, rail taps, charge state,
+                                                            bootscreen, the Tab5 Keyboard's keys)
   python tools/host_test/run.py --guard                    (only the boot-loop guard)
   python tools/host_test/run.py --charger                  (only the charger pins of the IO expander)
 """
@@ -89,8 +89,8 @@ def charger_test(cc, work):
 
 
 def idle_test(cc, work):
-    """0 when dim, screen off and wake behave as l5_ui.c should, taps reach the top bar's keys and buttons and the
-    Tab5 Keyboard's keys do what they did in the build of 20.10.2026"""
+    """0 when dim, screen off and wake behave as l5_ui.c should, taps reach the rail's tabs and buttons, the
+    bootscreen counts down and stops, and the Tab5 Keyboard's keys do what they did in the build of 20.10.2026"""
     exe = ui_shots.build(cc, work)
     r = subprocess.call([exe, '--idle'], cwd=work)
     r = subprocess.call([exe, '--taps'], cwd=work) or r
@@ -143,7 +143,7 @@ def main():
     r2 = subprocess.call([files_exe, files_dir.replace('\\', '/')], cwd=work)
     print('font decompression with two threads (test_font_rle):', flush=True)
     r3 = font_rle_test(cc, work)
-    print('idle dimming and screen off, top bar taps (shots --idle, --taps):', flush=True)
+    print('idle dimming and screen off, rail taps, bootscreen (shots --idle, --taps):', flush=True)
     r4 = idle_test(cc, work)
     print('boot-loop guard (test_guard):', flush=True)
     r5 = guard_test(cc, work)

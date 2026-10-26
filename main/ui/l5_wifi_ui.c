@@ -343,7 +343,7 @@ const char *l5_wifi_summary(char *buf, size_t len)
 
 static void on_status(void)
 {
-    l5_topbar_paint_wifi();
+    l5_rail_paint_wifi();
     l5_cfg_paint_wifi();
     l5_ota_paint_wifi();
 }

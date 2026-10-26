@@ -428,7 +428,8 @@ change at the end of the section):
 - **The glow and the cover shadow** stayed: LVGL 9.3 draws a shadow only at the edges and does not paint it under the
   object, and on the device they cost about 8 and 7 ms (measurement below). The glow stays (design decision, 2026-10-19);
   a cheaper equivalent (a 2 px outline in the accent color) is in screenshot 20b.
-- **Measurement on the device** (the `L5_HOME_BENCH` flag in `main/ui/l5_home.c`, 0 since build 0x1CF730: in a normal
+- **Measurement on the device** (removed on 2026-10-26 with the one-slot card it measured, when HOME became a carousel;
+  kept here as the record of what was measured. The `L5_HOME_BENCH` flag in `main/ui/l5_home.c`, 0 since build 0x1CF730: in a normal
   build a long press on "APPS IN FLASH" does nothing and the `.bin` file has no measurement code). With `L5_HOME_BENCH 1`
   (and `L5_TOUCH_TRACE` in `l5_display.h`) a long press on the "APPS IN FLASH" label (about 1 s) draws the HOME view 3 times
   in each of 7 variants, every 400 ms, and `l5_display` logs each frame: `HOME as built`, `HOME no glow`, `HOME no emblem
@@ -1204,6 +1205,7 @@ Port of `L5.connect`, `L5.pickWifi` and `L5.wifiMenu` (app.js) in `main/ui/l5_wi
 | + faster HOME (no drawing under the boot screen, built only once, panel without a background under the card), measured on the device (flashed 2026-10-19) | 1,898,768 B (0x1CF910) | 193 KB (9%) |
 | + Charge Mode: FULL and USB · NOT CHARGING at near-zero current, two matching readings; HOME measurement only with `L5_HOME_BENCH` (flashed 2026-10-19) | 1,898,288 B (0x1CF730) | 194 KB (9%) |
 | + charger enabled at startup (CHG_EN on PI4IOE 0x44 register by register, `l5_pi4io.h`) and again after a failed OFF (flashed 2026-10-19) | 1,899,312 B (0x1CFB30) | 193 KB (9%) |
+| + new look (2026-10-26, on top of the restored build of 2026-10-20 at 1,912,880 B): boot screen with the countdown ring, side menu instead of the top bar, HOME carousel (not flashed) | 1,900,016 B (0x1CFDF0) | 192 KB (9%) |
 
 The Wi-Fi stack and OTA fit in the 2 MB partition: the launcher, `L5_POOL_START` and the fixed areas do not
 change, and the launcher partition did not have to be enlarged. The largest parts: host esp_hosted 2.12.6
@@ -1293,8 +1295,9 @@ the default settings at once (the scheme stays), and a new file is created on th
 | `main/l5_wifi.c` | `R.wifi`, `S.savedWifi`, Wi-Fi in `L5.start`: ESP32-C6 over ESP-Hosted, scan, connecting, saved networks in NVS |
 | `main/l5_display.c` | panel + touch, LVGL → PPA → hidden DPI buffer, whole-frame publishing (from `..\aurora-player\components\tab5_hal\tab5_display.c`) |
 | `main/ui/l5_theme.c` | `:root` tokens and classes from launcher.css (`.plate`, `.dark`, `.act`, `.slot`, `.chamfer`…) |
-| `main/ui/l5_topbar.c` | `.topbar` (72 px): one plate, logo, groove with the tab keys, glowing strip under the active one, Wi-Fi, clock, battery, power button |
-| `main/ui/l5_home.c` | `renderHome()` and card handling (`#hmMain`), with a single slot `hero()` (`.hero`) |
+| `main/ui/l5_rail.c` | the side menu (112 px, since 26.10.2026; it replaced the 72 px top bar `l5_topbar.c`): logo, five 112 x 88 px tabs without gaps, clock, battery, Wi-Fi and power |
+| `main/ui/l5_home.c` | HOME as a carousel (since 26.10.2026; a grid and `hero()` before): one 440 x 490 px card per slot in a strip that scrolls sideways and snaps a card to the middle (`LV_SCROLL_SNAP_CENTER`, `LV_OBJ_FLAG_SCROLL_ONE`); the cards beside it get a black shade (opa 150) instead of a transform, the boot app an accent frame instead of a glow (both cheap to redraw while the strip scrolls) |
+| `main/ui/l5_boot.c` | the boot screen (since 26.10.2026; before in `l5_sys.c`): the ring is drawn with `lv_draw_arc` in a draw callback (the arc widget is off), and each 40 ms step invalidates only the box between the old and the new end of the arc |
 | `main/ui/l5_sys.c` | `L5.bootScreen`, `L5.bootApp`, `L5.restart`, `L5.powerMenu`, `L5.powerOff` |
 | `main/ui/l5_charge.c` | `L5.chargeMode` (`.charge`): battery with the real level, status line (CHARGING / ON BATTERY / FULL / USB · NOT CHARGING), refresh every 5 s |
 | `main/ui/l5_dialogs.c` | `U.modal` (`l5_ask`), `U.menu`, `U.confirm`, `U.info`, `U.progress`, `U.toast` |

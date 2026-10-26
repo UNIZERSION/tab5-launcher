@@ -14,5 +14,8 @@ void l5_grad_draw(lv_layer_t *layer, const l5_grad_key_t *key, const lv_area_t *
 void l5_dither_hook(lv_obj_t *obj);
 /* lv_obj_add_style(obj, dark ? &L5S.dark : &L5S.plate, 0) + l5_dither_hook(obj) */
 void l5_panel(lv_obj_t *obj, bool dark);
+/* Every cached gradient and strip goes (l5_theme_set): the table keeps at most 64 gradients and each theme and accent
+   brings its own. Keys are looked up on every draw, so nothing holds on to a forgotten one. */
+void l5_dither_forget(void);
 /* Dithering off / on (on from the start). Nothing in the build of 2026-10-20 calls it. */
 void l5_dither_set_enabled(bool on);

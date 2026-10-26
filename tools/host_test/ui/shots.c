@@ -1,11 +1,12 @@
 /* Snapshots of the SD manager and HOME rendered on the PC with the firmware's own LVGL configuration, fonts,
-   theme, screen (l5_ui.c: views, top bar, layers, veil), views and dialogs: layout of the side panel and the actions,
-   Polish letters in names, paths, the clipboard line and the text viewer; HOME with the device's slot (Custom, one
-   11264 KB slot, Aurora from SD), an empty slot and two slots. tools/host_test/ui_shots.py builds and
+   theme, screen (l5_ui.c: views, the rail, layers, veil), views and dialogs: layout of the side panel and the actions,
+   Polish letters in names, paths, the clipboard line and the text viewer; HOME's carousel with the device's slot
+   (Custom, one 11264 KB slot, Aurora from SD), an empty slot, two and four slots; the bootscreen (l5_boot.c).
+   tools/host_test/ui_shots.py builds and
    runs it: shots <output folder>; the card is the folder CONFIG_BSP_SD_MOUNT_POINT.
    shots --idle: dim, screen off and wake with l5_ui.c's own idle timer (run.py runs it).
-   shots --taps: what a tap at the edges of the top bar's keys and buttons hits, HOME's redraw bench (a long press
-   on its header) putting every part back and the dithered gradient of CFG's columns (run.py runs it).
+   shots --taps: what a tap at the edges of the rail's tabs and buttons hits, the bootscreen's countdown, the tap that
+   stops it, its chips and keys, and the dithered gradient of CFG's columns (run.py runs it).
    shots --keys: the M5Stack Tab5 Keyboard typed into the launcher (l5_keys.c and the views, dialogs, menus, text
    viewer, progress, on-screen keyboard and Charge Mode), as in the original build of 20.10.2026 (run.py runs it; the
    snapshots end with four of its scenes). */
@@ -206,6 +207,8 @@ static void slot_set(int i, const char *name, const char *project, const char *v
     s->size = size;
 }
 
+static void boot_slots(int n);
+
 static void home_shots(void)
 {
     /* the device on 19.10.2026: AUTO PARTITION for TAB5 Demo left a Custom table with one 11264 KB slot, then
@@ -217,16 +220,6 @@ static void home_shots(void)
     slot_set(0, "Aurora-Player-1.3.21-Application", "tab5_player", "1.3.21", "SD", "2026-10-19", "Oct 18 2026", 6344736);
     l5_ui_go(L5_VIEW_HOME);
     shot("20_home_device");
-    /* a preview only, not in the firmware: the glow replaced by a 2 px accent outline (cheaper if the glow turns out
-       to cost much on the device) */
-    lv_obj_t *card = lv_obj_get_child(lv_obj_get_child(lv_obj_get_child(lv_obj_get_child(lv_screen_active(), L5_VIEW_HOME), 0), -1), 0);
-    lv_obj_remove_style(card, &L5S.slot_sel, 0);
-    lv_obj_set_style_border_color(card, L5P.accent, 0);
-    lv_obj_set_style_outline_width(card, 2, 0);
-    lv_obj_set_style_outline_color(card, L5P.accent, 0);
-    lv_obj_set_style_shadow_width(card, 0, 0);
-    shot("20b_home_outline_preview");
-    l5_ui_go(L5_VIEW_HOME); /* rebuilt as the firmware draws it */
     slot_set(0, NULL, NULL, NULL, NULL, NULL, NULL, 0);
     l5_ui_go(L5_VIEW_HOME); /* the active tab again: rebuilt */
     shot("21_home_empty");
@@ -251,6 +244,17 @@ static void home_shots(void)
     l5_ui_go(L5_VIEW_HOME);
     shot("24_home_empty_no_card");
     shots_sd_ready = true;
+    /* the carousel with four slots: app0 boots; a tap on a card at the side brings it to the middle */
+    boot_slots(4);
+    l5_ui_go(L5_VIEW_HOME);
+    shot("25_home_four_apps");
+    lv_obj_t *strip = lv_obj_get_child(lv_obj_get_child(lv_obj_get_child(lv_screen_active(), L5_VIEW_HOME), 0), 1);
+    lv_obj_send_event(lv_obj_get_child(strip, 1), LV_EVENT_CLICKED, NULL);
+    settle(800);
+    shot("26_home_second_app_in_the_middle");
+    lv_obj_send_event(lv_obj_get_child(strip, 3), LV_EVENT_CLICKED, NULL);
+    settle(800);
+    shot("27_home_empty_slot_in_the_middle");
 
     /* the other tabs with the device's slot (Custom, 11264 KB, Aurora) */
     g_slots.n = 1;
@@ -263,11 +267,11 @@ static void home_shots(void)
     l5_ui_go(L5_VIEW_PMAN);
     shot("31_pman");
     shots_wifi_state = L5_WIFI_OFF;
-    l5_topbar_paint_wifi();
+    l5_rail_paint_wifi();
     l5_ui_go(L5_VIEW_OTA);
     shot("32_ota_no_wifi");
     shots_wifi_state = L5_WIFI_CONNECTED;
-    l5_topbar_paint_wifi();
+    l5_rail_paint_wifi();
 
     /* Charge Mode: the real charge, the state line, the pulsing tip while charging */
     static const struct {
@@ -291,6 +295,56 @@ static void home_shots(void)
     shots_battery = 76;
     shots_charging = L5_CHARGE_CHARGING;
     l5_ui_go(L5_VIEW_SD);
+}
+
+/* ---------- bootscreen (l5_boot.c) ---------- */
+
+extern int shots_auto_boots; /* ui_stubs.c: l5_boot_app_auto() */
+
+/* one slot: ORBIT DRUM 0.4.9 in the UiFlow2 slot (the user's Tab5 on 26.10.2026); four: a Custom table of 4 x 3 MB
+   with apps that fit (PSTX1 Serwis, Spotify, Pixel Paint) and an empty slot. app0 boots. */
+static void boot_slots(int n)
+{
+    g_slots.n = n;
+    g_slots.slot_kb = n == 1 ? 7552 : 3072;
+    g_slots.scheme = n == 1 ? "UiFlow2" : "Custom";
+    g_slots.boot = 0;
+    for (int i = 0; i < 4; i++) slot_set(i, NULL, NULL, NULL, NULL, NULL, NULL, 0);
+    if (n < 4) {
+        slot_set(0, "ORBIT DRUM", "orbit_drum", "0.4.9", "SD", "2026-10-26", "Oct 26 2026", 4847104);
+        return;
+    }
+    slot_set(0, "PSTX1_Serwis_1.1.1", "pstx1_serwis", "1.1.1", "SD", "2026-10-22", "Oct 22 2026", 2010000);
+    slot_set(1, "Spotify", "tab5_spotify", "0.4.8", "SD", "2026-10-23", "Oct 23 2026", 2343024);
+    slot_set(2, "Pixel Paint", "pixel_paint", "1.2.0", "OTA", "2026-10-18", "Sep 30 2026", 1992294);
+}
+
+static lv_obj_t *boot_el(void)
+{
+    return lv_obj_get_child(l5_ui_sys(), 0);
+}
+
+static void boot_shots(void)
+{
+    boot_slots(1);
+    l5_boot_screen();
+    shot("60_boot_one_app"); /* 300 ms into the 3 s countdown */
+    boot_slots(4);
+    l5_boot_screen();
+    settle(1200);
+    shot("61_boot_four_apps_halfway");
+    lv_obj_send_event(boot_el(), LV_EVENT_CLICKED, NULL); /* a tap beside the buttons */
+    shot("62_boot_stopped");
+    boot_slots(1);
+    slot_set(0, "M5Stack-UserDemo-Tab5-Factory-Firmware-2026-10", "tab5_user_demo", "v2.5.3", "OTA", "", "Sep 30 2026",
+             3355443);
+    l5_boot_screen();
+    shot("63_boot_long_name");
+    slot_set(0, NULL, NULL, NULL, NULL, NULL, NULL, 0);
+    l5_boot_screen();
+    shot("64_boot_no_app");
+    settle(1600); /* opens the launcher by itself */
+    l5_ui_set_booted(true);
 }
 
 /* ---------- idle: dim, screen off and wake, timed by l5_ui.c's idle timer ---------- */
@@ -373,9 +427,9 @@ static int idle_test(void)
     return s_fails ? 1 : 0;
 }
 
-/* ---------- taps on the top bar: which key or button LVGL finds under a point ---------- */
+/* ---------- taps on the rail: which tab or button LVGL finds under a point ---------- */
 
-/* "HOME".."CFG" for a tab key (icon label, text label[, divider]), "WIFI" / "POWER", "-" for nothing clickable
+/* "HOME".."CFG" for a tab (icon label, text label), "WIFI" / "POWER", "-" for nothing clickable
    (the screen itself is clickable in LVGL and has no handler) */
 static const char *hit(int32_t x, int32_t y)
 {
@@ -401,64 +455,191 @@ static int taps_test(void)
 {
     static const char *const TABS[L5_VIEW_COUNT] = {"HOME", "SD", "OTA", "PMAN", "CFG"};
     enum { N = L5_VIEW_COUNT };
-    lv_area_t key[N];
+    lv_area_t tab[N];
     int found = 0;
     lv_obj_t *last = NULL;
-    for (int32_t x = 300; x < 1000 && found < N; x++) { /* the keys' places, left to right */
-        lv_point_t p = {x, 34};
+    for (int32_t y = 0; y < L5_SCREEN_H && found < N; y++) { /* the tabs' places, top to bottom */
+        lv_point_t p = {L5_RAIL_W / 2, y};
         lv_obj_t *o = lv_indev_search_obj(lv_screen_active(), &p);
-        if (!o || o == last || strcmp(hit(x, 34), TABS[found])) continue;
+        if (!o || o == last || strcmp(hit(L5_RAIL_W / 2, y), TABS[found])) continue;
         last = o;
-        lv_obj_get_coords(o, &key[found++]);
+        lv_obj_get_coords(o, &tab[found++]);
     }
     if (found < N) {
-        printf("  FAIL: found %d of %d tab keys\n", found, N);
+        printf("  FAIL: found %d of %d tabs\n", found, N);
         return 1;
     }
-    EXPECT(lv_area_get_height(&key[0]) == 47, "keys are %d px high", (int)lv_area_get_height(&key[0]));
+    EXPECT(lv_area_get_height(&tab[0]) == 88 && tab[0].x1 == 0, "tabs are %d px high from x %d",
+           (int)lv_area_get_height(&tab[0]), (int)tab[0].x1);
     for (int i = 0; i < N; i++) {
-        const lv_area_t *a = &key[i];
-        int32_t cx = (a->x1 + a->x2) / 2, cy = 34;
-        EXPECT_HIT(cx, cy, TABS[i]);
-        EXPECT_HIT(a->x1, cy, TABS[i]);
-        EXPECT_HIT(a->x2, cy, TABS[i]);
-        EXPECT_HIT(cx, 0, TABS[i]);                 /* the top of the bar */
-        EXPECT_HIT(cx, L5_TOPBAR_H - 4, TABS[i]);   /* just above the seam */
-        EXPECT_HIT(cx, L5_TOPBAR_H - 3, "-");       /* the seam */
-        if (i < N - 1) {                            /* the 3 px gap: 2 px left key, 1 px right key */
-            EXPECT_HIT(a->x2 + 1, cy, TABS[i]);
-            EXPECT_HIT(a->x2 + 2, cy, TABS[i]);
-            EXPECT_HIT(a->x2 + 3, cy, TABS[i + 1]);
-            EXPECT_HIT(a->x2 + 1, 2, TABS[i]);      /* in the gap, high up */
-        }
+        const lv_area_t *a = &tab[i];
+        int32_t cy = (a->y1 + a->y2) / 2;
+        EXPECT_HIT(0, cy, TABS[i]);                 /* the screen's left edge */
+        EXPECT_HIT(L5_RAIL_W - 2, cy, TABS[i]);     /* up to the rail's border */
+        EXPECT_HIT(L5_RAIL_W / 2, a->y1, TABS[i]);
+        EXPECT_HIT(L5_RAIL_W / 2, a->y2, TABS[i]);
+        if (i < N - 1) EXPECT(a->y2 + 1 == tab[i + 1].y1, "a gap under %s", TABS[i]); /* every row is a tab */
     }
-    EXPECT_HIT(key[0].x1 - 6, 34, "HOME");
-    EXPECT_HIT(key[0].x1 - 7, 34, "-");
-    EXPECT_HIT(key[N - 1].x2 + 6, 34, "CFG");
-    EXPECT_HIT(key[N - 1].x2 + 7, 34, "-");
+    EXPECT_HIT(L5_RAIL_W / 2, tab[0].y1 - 1, "-");     /* the logo */
+    EXPECT_HIT(L5_RAIL_W / 2, tab[N - 1].y2 + 1, "-"); /* the status under the tabs */
 
-    /* Wi-Fi and power: 52 px, 6 px more around them */
+    /* Wi-Fi and power side by side at the bottom: 48 x 56 px, 2 px more around them */
     static const char *const BTN[] = {"WIFI", "POWER"};
+    lv_area_t btn[2] = {0};
     for (int b = 0; b < 2; b++) {
-        lv_area_t a = {0};
-        for (int32_t x = 924; x < L5_SCREEN_W && !a.x2; x++) { /* first column that hits the button */
-            if (!strcmp(hit(x, 34), BTN[b])) {
-                lv_point_t p = {x + 10, 34};
-                lv_obj_get_coords(lv_indev_search_obj(lv_screen_active(), &p), &a);
+        for (int32_t y = L5_SCREEN_H - 1; y > tab[N - 1].y2 && !btn[b].x2; y--) {
+            for (int32_t x = 0; x < L5_RAIL_W && !btn[b].x2; x++) {
+                if (strcmp(hit(x, y), BTN[b])) continue;
+                lv_point_t p = {x, y};
+                lv_obj_t *o = lv_indev_search_obj(lv_screen_active(), &p);
+                lv_obj_get_coords(o, &btn[b]);
             }
         }
-        EXPECT(lv_area_get_width(&a) == 52 && lv_area_get_height(&a) == 52, "%s is %dx%d px", BTN[b],
-               (int)lv_area_get_width(&a), (int)lv_area_get_height(&a));
-        int32_t cy = (a.y1 + a.y2) / 2, cx = (a.x1 + a.x2) / 2;
-        EXPECT_HIT(a.x1 - 6, cy, BTN[b]);
-        EXPECT_HIT(a.x2 + 6, cy, BTN[b]);
-        EXPECT_HIT(cx, a.y1 - 6, BTN[b]);
-        EXPECT_HIT(cx, a.y2 + 6, BTN[b]);
-        EXPECT(strcmp(hit(a.x1 - 7, cy), BTN[b]), "%s takes a tap 7 px left of it", BTN[b]);
-        EXPECT(strcmp(hit(a.x2 + 7, cy), BTN[b]), "%s takes a tap 7 px right of it", BTN[b]);
+        lv_area_t *a = &btn[b];
+        EXPECT(lv_area_get_width(a) == 48 && lv_area_get_height(a) == 56, "%s is %dx%d px", BTN[b],
+               (int)lv_area_get_width(a), (int)lv_area_get_height(a));
+        int32_t cy = (a->y1 + a->y2) / 2, cx = (a->x1 + a->x2) / 2;
+        EXPECT_HIT(cx, a->y1 - 2, BTN[b]);
+        EXPECT_HIT(cx, a->y2 + 2, BTN[b]);
+        EXPECT(strcmp(hit(cx, a->y1 - 3), BTN[b]), "%s takes a tap 3 px above it", BTN[b]);
+        (void)cy;
     }
-    printf(s_fails ? "taps: FAILED %d\n" : "taps: keys, gaps, bar height, Wi-Fi and power PASSED\n", s_fails);
+    int32_t cy = (btn[0].y1 + btn[0].y2) / 2;
+    EXPECT(btn[1].x1 - btn[0].x2 == 5, "%d px between Wi-Fi and power", (int)(btn[1].x1 - btn[0].x2 - 1));
+    EXPECT_HIT(btn[0].x2 + 2, cy, "WIFI");  /* the 4 px between them: 2 px each */
+    EXPECT_HIT(btn[1].x1 - 2, cy, "POWER");
+    printf(s_fails ? "taps: FAILED %d\n" : "taps: rail tabs, edges, Wi-Fi and power PASSED\n", s_fails);
     return s_fails ? 1 : 0;
+}
+
+/* ---------- themes (l5_theme.c, CFG > Theme) ---------- */
+
+/* Midnight and Daylight: HOME, SD with the on-screen keyboard, CFG, PMAN and the bootscreen, then Graphite again */
+static void theme_shots(void)
+{
+    char n[48];
+    for (int t = L5_THEME_MIDNIGHT; t < L5_THEME_COUNT; t++) {
+        const char *id = l5_themes[t].id;
+        boot_slots(4);
+        strlcpy(g_cfg.theme, id, sizeof(g_cfg.theme)); /* as CFG > Theme does */
+        l5_ui_retheme(t);
+        l5_ui_go(L5_VIEW_HOME);
+        snprintf(n, sizeof(n), "7%d_%s_home", t, id);
+        shot(n);
+        l5_ui_go(L5_VIEW_SD);
+        l5_sd_after_op(CARD, "Aurora-Player-1.3.21.bin");
+        snprintf(n, sizeof(n), "7%d_%s_sd", t, id);
+        shot(n);
+        l5_sd_action("rename");
+        snprintf(n, sizeof(n), "7%d_%s_keyboard", t, id);
+        shot(n);
+        close_all();
+        l5_ui_go(L5_VIEW_CFG);
+        snprintf(n, sizeof(n), "7%d_%s_cfg", t, id);
+        shot(n);
+        l5_ui_go(L5_VIEW_PMAN);
+        snprintf(n, sizeof(n), "7%d_%s_pman", t, id);
+        shot(n);
+        l5_boot_screen();
+        settle(1200);
+        snprintf(n, sizeof(n), "7%d_%s_boot", t, id);
+        shot(n);
+        l5_sys_hide();
+        l5_ui_set_booted(true);
+    }
+    strlcpy(g_cfg.theme, "graphite", sizeof(g_cfg.theme));
+    l5_ui_retheme(L5_THEME_GRAPHITE);
+}
+
+/* Every colour of every theme is set (a forgotten field is black), and Midnight -> Daylight -> Graphite gives back
+   the Graphite screen pixel for pixel: nothing keeps a colour of the theme before. */
+static int theme_test(void)
+{
+    int before = s_fails;
+    static const int black_ok[L5_THEME_COUNT] = {3, 4, 0}; /* panel_edge, btn_shadow, rail_edge (+ Midnight's scrim) */
+    for (int t = 0; t < L5_THEME_COUNT; t++) {
+        const lv_color_t *c = (const lv_color_t *)l5_theme_colors(t);
+        int black = 0;
+        for (size_t i = 0; i < sizeof(l5_colors_t) / sizeof(lv_color_t); i++) black += !c[i].red && !c[i].green && !c[i].blue;
+        EXPECT(black == black_ok[t], "theme %s: %d black colours, expected %d", l5_themes[t].id, black, black_ok[t]);
+    }
+    boot_slots(4);
+    l5_ui_retheme(L5_THEME_GRAPHITE);
+    for (int v = 0; v < L5_VIEW_COUNT; v++) {
+        l5_ui_go((l5_view_t)v);
+        settle(300);
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(NULL);
+        uint16_t *ref = malloc(W * H * 2);
+        memcpy(ref, s_fb, W * H * 2);
+        l5_ui_retheme(L5_THEME_MIDNIGHT);
+        settle(100);
+        const uint16_t want = (uint16_t)(((L5C.plate.red >> 3) << 11) | ((L5C.plate.green >> 2) << 5) | (L5C.plate.blue >> 3));
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(NULL);
+        EXPECT(s_fb[3 * W + L5_RAIL_W + 3] == want, "view %d: the gap is not Midnight's plate after the switch", v);
+        l5_ui_retheme(L5_THEME_DAYLIGHT);
+        settle(100);
+        l5_ui_retheme(L5_THEME_GRAPHITE);
+        settle(300);
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(NULL);
+        int diff = 0;
+        for (int y = 0; y < H; y++) {
+            for (int x = 0; x < W; x++) {
+                if (x < L5_RAIL_W && y > 524) continue; /* the rail's clock may have moved on */
+                diff += s_fb[y * W + x] != ref[y * W + x];
+            }
+        }
+        free(ref);
+        EXPECT(diff == 0, "view %d: %d pixels differ after Midnight -> Daylight -> Graphite", v, diff);
+    }
+    int fails = s_fails - before;
+    printf(fails ? "themes: FAILED %d\n" : "themes: every colour set, Graphite back pixel for pixel in all views PASSED\n",
+           fails);
+    return fails ? 1 : 0;
+}
+
+/* the bootscreen: the countdown, the tap that stops it, a chip, a key, no app */
+static int boot_test(void)
+{
+    int before = s_fails;
+    boot_slots(4);
+    int autos = shots_auto_boots, boots = shots_boots, selects = shots_selects;
+    l5_boot_screen();
+    settle(2900);
+    EXPECT(shots_auto_boots == autos, "boot: started before the 3 s were up");
+    settle(200);
+    EXPECT(shots_auto_boots == autos + 1, "boot: the countdown ran out and nothing started");
+    l5_boot_screen();
+    settle(500);
+    lv_obj_send_event(boot_el(), LV_EVENT_CLICKED, NULL);
+    settle(4000);
+    EXPECT(shots_auto_boots == autos + 1, "boot: a tap did not stop the countdown");
+    EXPECT(lv_obj_get_child_count(l5_ui_sys()) == 1, "boot: the stopped bootscreen went away");
+    /* the chips: the last child of the screen is their box, its last child the row */
+    lv_obj_t *row = lv_obj_get_child(lv_obj_get_child(boot_el(), -1), -1);
+    EXPECT(row && lv_obj_get_child_count(row) == 2, "boot: %d chips for the two other apps",
+           row ? (int)lv_obj_get_child_count(row) : -1);
+    if (row) lv_obj_send_event(lv_obj_get_child(row, 1), LV_EVENT_CLICKED, NULL); /* Pixel Paint in app2 */
+    EXPECT(g_slots.boot == 2 && shots_selects == selects + 1 && shots_boots == boots + 1,
+           "boot: the chip did not start app2 (boot %d)", g_slots.boot);
+    g_slots.boot = 0;
+    l5_boot_screen();
+    l5_key_t k = {.kind = L5_KEY_CHAR, .ch = 'x'};
+    EXPECT(l5_sys_key(&k) && lv_obj_get_child_count(l5_ui_sys()) == 0 && l5_ui_view() == L5_VIEW_HOME,
+           "boot: a key did not enter the launcher");
+    settle(4000);
+    EXPECT(shots_auto_boots == autos + 1, "boot: the countdown ran on after a key");
+    boot_slots(1);
+    slot_set(0, NULL, NULL, NULL, NULL, NULL, NULL, 0);
+    l5_boot_screen();
+    settle(1600);
+    EXPECT(lv_obj_get_child_count(l5_ui_sys()) == 0, "boot: no app, the launcher did not open by itself");
+    l5_ui_set_booted(true);
+    int fails = s_fails - before;
+    printf(fails ? "bootscreen: FAILED %d\n" : "bootscreen: countdown, tap stops it, chips, key, no app PASSED\n", fails);
+    return fails ? 1 : 0;
 }
 
 /* Charge Mode's state line from the current readings (l5_board.h l5_charge_next) */
@@ -503,40 +684,13 @@ static int charge_state_test(void)
     return fails ? 1 : 0;
 }
 
-/* HOME's bench (l5_home.c, long press on "APPS IN FLASH") leaves the view as it found it */
-static int bench_restore_test(void)
-{
-    g_slots.n = 1;
-    g_slots.slot_kb = 11264;
-    g_slots.scheme = "Custom";
-    g_slots.boot = 0;
-    slot_set(0, "Aurora-Player-1.3.21-Application", "tab5_player", "1.3.21", "SD", "2026-10-19", "Oct 18 2026", 6344736);
-    l5_ui_go(L5_VIEW_HOME); /* the active tab again: rebuilt with the slot */
-    settle(300);
-    lv_obj_invalidate(lv_screen_active());
-    lv_refr_now(NULL);
-    const size_t row = W * 2, skip = L5_TOPBAR_H * row; /* the bar has the clock */
-    uint8_t *before = malloc(W * H * 2);
-    memcpy(before, s_fb, W * H * 2);
-    lv_obj_t *header = lv_obj_get_child(lv_obj_get_child(lv_obj_get_child(lv_screen_active(), L5_VIEW_HOME), 0), 0);
-    lv_obj_send_event(header, LV_EVENT_LONG_PRESSED, NULL);
-    settle(12000); /* 7 variants x 3 frames, 400 ms apart */
-    lv_obj_invalidate(lv_screen_active());
-    lv_refr_now(NULL);
-    int fails = memcmp(before + skip, (uint8_t *)s_fb + skip, W * H * 2 - skip) != 0;
-    if (fails) printf("  FAIL: HOME looks different after its bench\n");
-    free(before);
-    printf(fails ? "bench: FAILED\n" : "bench: HOME's redraw bench runs and puts every part back PASSED\n");
-    return fails;
-}
-
-/* l5_dither.c: CFG's dark columns (L5S.dark, #1d1f23 -> #141518 over 632 px) are dithered. Under the last row of
+/* l5_dither.c: CFG's dark columns (L5S.dark, #1d1f23 -> #141518 over 696 px) are dithered. Under the last row of
    DISPLAY every 4 x 4 block mixes RGB565 levels and averages to the ideal gradient within one 8-bit step; LVGL's own
    gradient leaves a single color there (a band) up to 5 steps off. */
 static int dither_test(void)
 {
     static const int top[3] = {0x1d, 0x1f, 0x23}, bot[3] = {0x14, 0x15, 0x18};
-    const int x0 = 40, y0 = 640, y1 = 700, py = L5_TOPBAR_H + L5_PANEL_Y; /* the column spans py .. py + 631 */
+    const int x0 = L5_RAIL_W + 40, y0 = 640, y1 = 700, py = L5_PANEL_Y; /* the column spans py .. py + 695 */
     l5_ui_go(L5_VIEW_CFG);
     settle(300);
     lv_obj_invalidate(lv_screen_active());
@@ -1042,6 +1196,19 @@ static void cfg_keys(void)
     KEY(LEFT);
     EXPECT(!strcmp(g_cfg.color, "magenta"), "CFG: Left goes round to the last swatch (%s)", g_cfg.color);
     KEY(RIGHT);
+    KEY(DOWN); /* Theme */
+    KEY(RIGHT);
+    settle(100); /* CFG is rebuilt after the key's event */
+    EXPECT(!strcmp(g_cfg.theme, "midnight") && l5_theme_current() == L5_THEME_MIDNIGHT,
+           "CFG: Right on Theme = the next theme (%s, %d)", g_cfg.theme, l5_theme_current());
+    KEY(LEFT);
+    KEY(LEFT);
+    settle(100);
+    EXPECT(!strcmp(g_cfg.theme, "daylight"), "CFG: Left goes round to the last theme (%s)", g_cfg.theme);
+    KEY(RIGHT);
+    settle(100);
+    EXPECT(!strcmp(g_cfg.theme, "graphite") && l5_theme_current() == L5_THEME_GRAPHITE,
+           "CFG: back to Graphite (%s)", g_cfg.theme);
     KEY(DOWN); /* Rotation */
     KEY(ENTER);
     EXPECT(g_cfg.rot == 180, "CFG: Enter on Rotation = a tap on it (%d)", g_cfg.rot);
@@ -1049,7 +1216,7 @@ static void cfg_keys(void)
     if (s_key_shots) shot("53_keys_cfg_ring");
     l5_ui_go(L5_VIEW_CFG); /* rebuilt */
     lv_obj_t *col = lv_obj_get_child(lv_obj_get_child(lv_screen_active(), L5_VIEW_CFG), 0);
-    EXPECT(ring(lv_obj_get_child(lv_obj_get_child(col, 1), 4)), "CFG rebuilt: the ring stays on Rotation");
+    EXPECT(ring(lv_obj_get_child(lv_obj_get_child(col, 1), 5)), "CFG rebuilt: the ring stays on Rotation"); /* after Theme */
     KEY(HOME);
     KEY(UP);
     KEY(ENTER);
@@ -1111,7 +1278,7 @@ int main(int argc, char **argv)
     lv_display_set_buffers(d, s_fb, NULL, W * H * 2, LV_DISPLAY_RENDER_MODE_DIRECT);
     lv_display_set_flush_cb(d, flush_cb);
 
-    l5_theme_init(0xe3171f);
+    l5_theme_init(0xe3171f, L5_THEME_GRAPHITE);
     l5_ui_init(); /* the launcher's screen: views, top bar, layers, veil, idle timer */
     l5_keys_init(); /* the Tab5 Keyboard's keys (views_stubs.c: none unless a test types) */
     if (idle) return idle_test();
@@ -1121,10 +1288,13 @@ int main(int argc, char **argv)
         lv_obj_update_layout(lv_screen_active());
         int r = taps_test();
         r = charge_state_test() || r;
-        r = bench_restore_test() || r;
+        r = boot_test() || r;
+        r = theme_test() || r;
         return dither_test() || r;
     }
     home_shots();
+    boot_shots();
+    theme_shots();
     l5_ui_go(L5_VIEW_SD);
 
     l5_sd_after_op(CARD, NULL);

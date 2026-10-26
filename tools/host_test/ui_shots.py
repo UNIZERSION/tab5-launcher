@@ -25,8 +25,8 @@ import lvgl_host
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAIN = os.path.join(lvgl_host.PROJECT, 'main')
 UI_FILES = ['ui/l5_theme.c', 'ui/l5_widgets.c', 'ui/l5_dialogs.c', 'ui/l5_cover.c', 'ui/l5_keyboard.c', 'ui/l5_sd.c',
-            'ui/l5_sd_ops.c', 'ui/l5_topbar.c', 'ui/l5_ui.c', 'ui/l5_home.c', 'ui/l5_views.c', 'ui/l5_cfg.c',
-            'ui/l5_pman.c', 'ui/l5_ota.c', 'ui/l5_charge.c', 'ui/l5_keys.c', 'ui/l5_dither.c', 'l5_files.c']
+            'ui/l5_sd_ops.c', 'ui/l5_rail.c', 'ui/l5_ui.c', 'ui/l5_home.c', 'ui/l5_views.c', 'ui/l5_cfg.c',
+            'ui/l5_pman.c', 'ui/l5_ota.c', 'ui/l5_charge.c', 'ui/l5_keys.c', 'ui/l5_dither.c', 'ui/l5_boot.c', 'l5_files.c']
 
 
 def ppm_to_png(ppm, png):
@@ -51,7 +51,6 @@ def build(cc, work):
     card = os.path.join(work, 'card').replace('\\', '/')
     stub = os.path.join(HERE, 'ui', 'stub')
     flags = base + ['-I' + stub, '-I' + MAIN, '-I' + os.path.join(MAIN, 'ui'), '-I' + cjson, '-include', 'compat.h',
-                    '-DL5_HOME_BENCH=1',  # the bench is off in the firmware; shots --taps checks it still puts HOME back
                     f'-DCONFIG_BSP_SD_MOUNT_POINT="{card}"', f'-DL5_CONFIG_PATH="{card}/config.conf"']
     srcs = [os.path.join(MAIN, f) for f in UI_FILES]
     srcs += [os.path.join(MAIN, 'fonts', f) for f in sorted(os.listdir(os.path.join(MAIN, 'fonts'))) if f.endswith('.c')]

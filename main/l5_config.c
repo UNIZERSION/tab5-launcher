@@ -25,7 +25,7 @@ void l5_config_defaults(l5_config_t *cfg)
 {
     /* app.js defaults().cfg */
     *cfg = (l5_config_t){
-        .bright = 70, .dim = 30, .screenOff = 120, .color = "red", .rot = 0, .askSpiffs = true, .onlyBins = true,
+        .bright = 70, .dim = 30, .screenOff = 120, .color = "red", .theme = "graphite", .rot = 0, .askSpiffs = true, .onlyBins = true,
         .bootTime = 3, .wifiAuto = true, .deepSleepStart = true, .btnOnlyStart = false, .scheme = "default",
     };
 }
@@ -179,6 +179,7 @@ esp_err_t l5_config_load(l5_config_t *cfg)
         cfg->bootTime = clampi(v, 1, 5);
     }
     get_str(root, "color", cfg->color, sizeof(cfg->color));
+    get_str(root, "theme", cfg->theme, sizeof(cfg->theme));
     get_str(root, "scheme", cfg->scheme, sizeof(cfg->scheme));
     get_bool(root, "askSpiffs", &cfg->askSpiffs);
     get_bool(root, "onlyBins", &cfg->onlyBins);
@@ -210,6 +211,7 @@ esp_err_t l5_config_save(const l5_config_t *cfg)
     set_item(root, "dim", cJSON_CreateNumber(cfg->dim));
     set_item(root, "screenOff", cJSON_CreateNumber(cfg->screenOff));
     set_item(root, "color", cJSON_CreateString(cfg->color));
+    set_item(root, "theme", cJSON_CreateString(cfg->theme));
     set_item(root, "rot", cJSON_CreateNumber(cfg->rot));
     set_item(root, "askSpiffs", cJSON_CreateBool(cfg->askSpiffs));
     set_item(root, "onlyBins", cJSON_CreateBool(cfg->onlyBins));

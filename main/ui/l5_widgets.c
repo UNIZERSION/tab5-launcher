@@ -64,9 +64,9 @@ lv_obj_t *l5w_chip(lv_obj_t *parent, const char *icon, const char *text, bool on
     lv_obj_set_style_pad_column(b, 8, 0);
     lv_obj_set_style_radius(b, 3, 0);
     lv_obj_set_style_border_width(b, 1, 0);
-    lv_obj_set_style_border_color(b, on ? L5P.accent : lv_color_hex(0x474a51), 0);
+    lv_obj_set_style_border_color(b, on ? L5P.accent : L5C.chip_edge, 0);
     lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(b, on ? l5_mix(L5P.accent, lv_color_hex(0x1a1b1f), 89) : lv_color_hex(0x1a1b1f), 0);
+    lv_obj_set_style_bg_color(b, on ? l5_mix(L5P.accent, L5C.chip, 89) : L5C.chip, 0);
     lv_obj_set_style_bg_color(b, L5_PANEL_3, LV_STATE_PRESSED);
     lv_obj_set_style_opa(b, 102, LV_STATE_DISABLED);
     lv_obj_set_style_text_font(b, &l5_mono_14, 0);

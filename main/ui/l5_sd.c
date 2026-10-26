@@ -418,7 +418,7 @@ static void side_foot(lv_obj_t *s)
     lv_obj_remove_style_all(m);
     lv_obj_set_size(m, lv_pct(100), 8);
     lv_obj_set_style_bg_opa(m, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(m, lv_color_hex(0xc7c9ce), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(m, L5_PLATE_LO, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(m, LV_OPA_COVER, LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(m, L5P.accent, LV_PART_INDICATOR);
     lv_bar_set_range(m, 0, 1000);
@@ -669,37 +669,38 @@ static void row_styles(void)
         lv_style_set_pad_column(&s_row, 14);
         lv_style_set_border_side(&s_row, LV_BORDER_SIDE_BOTTOM);
         lv_style_set_border_width(&s_row, 1);
-        lv_style_set_border_color(&s_row, L5_PANEL_LINE);
-        lv_style_set_text_color(&s_row, L5_ON_PANEL);
         lv_style_set_layout(&s_row, LV_LAYOUT_FLEX);
         lv_style_set_flex_flow(&s_row, LV_FLEX_FLOW_ROW);
         lv_style_set_flex_main_place(&s_row, LV_FLEX_ALIGN_START);
         lv_style_set_flex_cross_place(&s_row, LV_FLEX_ALIGN_CENTER);
         lv_style_set_flex_track_place(&s_row, LV_FLEX_ALIGN_CENTER);
         lv_style_init(&s_row_pr);
-        lv_style_set_bg_color(&s_row_pr, L5_PANEL_3);
         lv_style_set_bg_opa(&s_row_pr, LV_OPA_COVER);
         lv_style_init(&s_row_sel);
         lv_style_set_bg_opa(&s_row_sel, 56); /* rgba(accent, .22) */
         lv_style_init(&s_icon);
         lv_style_set_text_font(&s_icon, &l5_icon_24);
-        lv_style_set_text_color(&s_icon, L5_ON_PANEL_MUTED);
         lv_style_set_width(&s_icon, 28);
         lv_style_set_text_align(&s_icon, LV_TEXT_ALIGN_CENTER);
         lv_style_init(&s_name);
         lv_style_set_text_font(&s_name, &l5_chakra_sb19);
-        lv_style_set_text_color(&s_name, L5_ON_PANEL);
         lv_style_set_height(&s_name, lv_font_get_line_height(&l5_chakra_sb19));
         lv_style_set_flex_grow(&s_name, 1);
         lv_style_init(&s_meta);
         lv_style_set_text_font(&s_meta, &l5_mono_14);
-        lv_style_set_text_color(&s_meta, L5_ON_PANEL_MUTED);
         lv_style_init(&s_date);
         lv_style_set_width(&s_date, 150);
         lv_style_set_text_align(&s_date, LV_TEXT_ALIGN_RIGHT);
         done = true;
     }
-    lv_style_set_bg_color(&s_row_sel, L5P.accent); /* CFG > UI color can change it */
+    /* CFG > Theme and UI color can change these */
+    lv_style_set_border_color(&s_row, L5_PANEL_LINE);
+    lv_style_set_text_color(&s_row, L5_ON_PANEL);
+    lv_style_set_bg_color(&s_row_pr, L5_PANEL_3);
+    lv_style_set_text_color(&s_icon, L5_ON_PANEL_MUTED);
+    lv_style_set_text_color(&s_name, L5_ON_PANEL);
+    lv_style_set_text_color(&s_meta, L5_ON_PANEL_MUTED);
+    lv_style_set_bg_color(&s_row_sel, L5P.accent);
 }
 
 static void row(lv_obj_t *list, int i)
@@ -887,8 +888,8 @@ bool l5_sd_key(const l5_key_t *k)
 void l5_sd_render(lv_obj_t *view)
 {
     lv_obj_clean(view);
-    lv_obj_t *m = l5w_pane(view, true, 12, 816);
-    R.side = l5w_pane(view, false, 840, 428);
+    lv_obj_t *m = l5w_pane(view, true, L5_GAP, L5_MAIN_W);
+    R.side = l5w_pane(view, false, L5_SIDE_X, L5_SIDE_W);
     R.list = NULL;
     if (!l5_board_sd_ready()) {
         no_card(m, R.side);

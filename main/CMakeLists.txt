@@ -3,7 +3,7 @@ file(GLOB FONT_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/fonts/*.c")
 idf_component_register(
     SRCS "main.c" "l5_board.c" "l5_display.c" "l5_config.c" "l5_slots.c" "l5_ptable.c" "l5_wifi.c" "l5_kbd.c" "l5_net.c"
          "l5_fw.c" "l5_inst.c" "l5_files.c"
-         "ui/l5_theme.c" "ui/l5_ui.c" "ui/l5_topbar.c" "ui/l5_home.c" "ui/l5_sys.c"
+         "ui/l5_theme.c" "ui/l5_ui.c" "ui/l5_rail.c" "ui/l5_home.c" "ui/l5_sys.c" "ui/l5_boot.c"
          "ui/l5_dialogs.c" "ui/l5_cover.c" "ui/l5_views.c" "ui/l5_widgets.c" "ui/l5_sd.c" "ui/l5_pman.c"
          "ui/l5_cfg.c" "ui/l5_keyboard.c" "ui/l5_wifi_ui.c" "ui/l5_inst_ui.c" "ui/l5_ota.c"
          "ui/l5_sd_ops.c" "ui/l5_charge.c" "ui/l5_keys.c" "ui/l5_dither.c"

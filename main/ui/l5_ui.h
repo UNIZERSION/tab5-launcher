@@ -21,6 +21,9 @@ void l5_ui_go(l5_view_t view);   /* L5.go: a tab tap (tapping the active tab reb
 void l5_ui_show(l5_view_t view); /* back from a system screen: a built view is only shown */
 void l5_ui_prepare(l5_view_t view); /* at start: built and selected, drawn with whatever frame comes next */
 void l5_ui_covered(bool covered); /* a full-screen system screen is up: the launcher underneath is not drawn */
+/* CFG > Theme: the colours change without a restart, right after the current event: shared styles restyle in place,
+   the rail and the visible view are built again, the other views when they are shown next. */
+void l5_ui_retheme(int theme);
 /* Data changed: the visible view, if it is in `views`, is rebuilt now (after the release while a
    finger is down); the other views in `views` are rebuilt when they are shown next. Views that only
    change a value update their widgets in place instead (CFG, HOME and PMAN selection). */
@@ -46,12 +49,14 @@ bool l5_ota_key(const l5_key_t *k);
 bool l5_cfg_key(const l5_key_t *k);
 bool l5_sys_key(const l5_key_t *k); /* a system screen is up (l5_sys.c) */
 
-/* ---------- top bar (l5_topbar.c) ---------- */
-void l5_topbar_create(lv_obj_t *screen);
-void l5_topbar_select(l5_view_t view);
-void l5_topbar_paint_status(void); /* L5.paintStatus + clock tick */
-void l5_topbar_paint_wifi(void);   /* Wi-Fi icon: wifi-off / connecting / .tb-btn.on */
-void l5_topbar_apply_accent(void); /* after l5_theme_set_accent */
+/* ---------- the rail of tabs down the left edge (l5_rail.c; the top bar until 26.10.2026) ---------- */
+void l5_rail_create(lv_obj_t *screen);
+void l5_rail_select(l5_view_t view);
+void l5_rail_paint_status(void); /* L5.paintStatus + clock tick */
+void l5_rail_paint_wifi(void);   /* Wi-Fi icon: wifi-off / connecting / .tb-btn.on */
+void l5_rail_apply_accent(void); /* after l5_theme_set_accent */
+void l5_rail_rebuild(void);      /* after l5_theme_set: built again in the new colours */
+int l5_rail_battery(void);       /* the battery percent it shows (read every 30 s), -1 when unknown */
 
 /* ---------- on-screen keyboard (l5_keyboard.c), port of U.keyboard ---------- */
 typedef void (*l5_keyboard_cb_t)(const char *text, void *user); /* text == NULL: CANCEL */
@@ -105,8 +110,13 @@ bool l5_install_busy(void);
 void l5_ota_render(lv_obj_t *view);   /* l5_ota.c: online installer */
 void l5_ota_paint_wifi(void);         /* OTA follows the Wi-Fi state */
 
+/* ---------- bootscreen (l5_boot.c) ---------- */
+void l5_boot_screen(void);   /* L5.bootScreen: the app in a ring that counts down, LAUNCHER, START NOW, other apps */
+void l5_boot_screen_stop(void);  /* its countdown stops: another system screen replaces it (l5_sys.c) */
+bool l5_boot_screen_key(const l5_key_t *k); /* the bootscreen is up: any key enters the launcher (true) */
+void l5_enter_launcher(void);    /* from the bootscreen into HOME */
+
 /* ---------- system screens (l5_sys.c) ---------- */
-void l5_boot_screen(void);   /* L5.bootScreen: countdown, ENTER LAUNCHER, FAST BOOT APP */
 void l5_boot_app(void);      /* L5.bootApp: the user hands over to the selected slot (the boot-loop guard starts over) */
 void l5_boot_app_auto(void); /* the bootscreen countdown and btnOnlyStart: the guard keeps counting early returns */
 /* Launcher instead of the bootscreen: the app in `slot` was stopped by the boot-loop guard just now after
@@ -172,6 +182,8 @@ void l5w_apps_erased(char *out, size_t len);
 /* ---------- procedural firmware emblem (l5_cover.c), port of U.cover ---------- */
 lv_obj_t *l5_cover_create(lv_obj_t *parent, int32_t size, const char *seed, const char *title, const char *sub,
                           int num, bool text);
+/* the emblem's two letters: the first letters of the first two words, upper case ("FW" without any) */
+void l5_cover_initials(const char *title, char out[3]);
 
 /* ---------- formatting (ui.js) ---------- */
 void l5_fmt_bytes(char *out, size_t len, uint64_t bytes); /* U.fmtBytes */

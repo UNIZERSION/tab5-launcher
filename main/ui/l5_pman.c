@@ -1098,10 +1098,10 @@ static lv_obj_t *chip(lv_obj_t *parent, const char *icon, const char *text, cons
     lv_obj_set_style_pad_hor(b, 14, 0);
     lv_obj_set_style_pad_column(b, 8, 0);
     lv_obj_set_style_border_width(b, 1, 0);
-    lv_obj_set_style_border_color(b, lv_color_hex(0x474a51), 0);
+    lv_obj_set_style_border_color(b, L5C.chip_edge, 0);
     lv_obj_set_style_radius(b, 3, 0);
     lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(b, lv_color_hex(0x1a1b1f), 0);
+    lv_obj_set_style_bg_color(b, L5C.chip, 0);
     lv_obj_set_style_bg_color(b, L5_PANEL_3, LV_STATE_PRESSED);
     lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(b, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -1165,7 +1165,7 @@ static void main_pane(lv_obj_t *m, const row_t *sel)
     lv_obj_set_style_pad_hor(wrap, 18, 0);
     lv_obj_set_style_pad_bottom(wrap, 6, 0);
     lv_obj_t *map = l5_box(wrap);
-    const int32_t W = 816 - 36 - 2;
+    const int32_t W = L5_MAIN_W - 36 - 2;
     lv_obj_set_size(map, W, 54);
     lv_obj_set_style_border_width(map, 1, 0);
     lv_obj_set_style_border_color(map, L5_BLACK, 0);
@@ -1224,7 +1224,7 @@ static void main_pane(lv_obj_t *m, const row_t *sel)
     lv_obj_set_flex_flow(head, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(head, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     static const char *const cols[] = {"LABEL", "TYPE", "SUBTYPE", "OFFSET", "SIZE", "USED"};
-    static const int32_t widths[] = {170, 70, 110, 120, 90, 0};
+    static const int32_t widths[] = {150, 70, 100, 120, 80, 0}; /* the pane is 704 px since the rail (816 before) */
     for (int k = 0; k < 6; k++) {
         lv_obj_t *c = cell(head, widths[k], &l5_mono_12, L5_ON_PANEL_MUTED, cols[k]);
         lv_obj_set_style_text_letter_space(c, 2, 0);
@@ -1261,7 +1261,7 @@ static void main_pane(lv_obj_t *m, const row_t *sel)
         V.tr[r] = tr;
         V.mark[r] = mark;
         lv_obj_t *lab = l5_box(tr);
-        lv_obj_set_size(lab, 170, LV_SIZE_CONTENT);
+        lv_obj_set_size(lab, 150, LV_SIZE_CONTENT);
         lv_obj_set_style_pad_column(lab, 10, 0);
         lv_obj_set_flex_flow(lab, LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(lab, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -1270,14 +1270,14 @@ static void main_pane(lv_obj_t *m, const row_t *sel)
         lv_obj_set_style_radius(sw, 2, 0);
         lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, 0);
         lv_obj_set_style_bg_color(sw, row->color, 0);
-        cell(lab, 140, &l5_mono_16, L5_ON_PANEL, row_label(row));
+        cell(lab, 128, &l5_mono_16, L5_ON_PANEL, row_label(row));
         char sub[16], off[16], size[16], use[24];
         cell(tr, 70, &l5_mono_16, L5_ON_PANEL, type_str(row->p));
-        cell(tr, 110, &l5_mono_16, L5_ON_PANEL, sub_str(row->p, sub, sizeof(sub)));
+        cell(tr, 100, &l5_mono_16, L5_ON_PANEL, sub_str(row->p, sub, sizeof(sub)));
         snprintf(off, sizeof(off), "0x%06lX", (unsigned long)row->offset);
         cell(tr, 120, &l5_mono_16, L5_ON_PANEL, off);
         l5_fmt_kb(size, sizeof(size), row->size / 1024);
-        cell(tr, 90, &l5_mono_16, L5_ON_PANEL, size);
+        cell(tr, 80, &l5_mono_16, L5_ON_PANEL, size);
         int pct;
         used_text(row, use, sizeof(use), &pct);
         lv_obj_t *uc = l5_box(tr);
@@ -1290,9 +1290,9 @@ static void main_pane(lv_obj_t *m, const row_t *sel)
             lv_obj_t *ub = lv_bar_create(uc);
             lv_obj_remove_flag(ub, LV_OBJ_FLAG_CLICKABLE); /* a tap on the bar selects the row */
             lv_obj_remove_style_all(ub);
-            lv_obj_set_size(ub, 90, 6);
+            lv_obj_set_size(ub, 70, 6);
             lv_obj_set_style_bg_opa(ub, LV_OPA_COVER, LV_PART_MAIN);
-            lv_obj_set_style_bg_color(ub, lv_color_hex(0x33363c), LV_PART_MAIN);
+            lv_obj_set_style_bg_color(ub, L5C.meter, LV_PART_MAIN);
             lv_obj_add_style(ub, &L5S.meter_ind, LV_PART_INDICATOR);
             lv_bar_set_range(ub, 0, 100);
             lv_bar_set_value(ub, pct > 100 ? 100 : pct, LV_ANIM_OFF);
@@ -1446,7 +1446,7 @@ void l5_pman_render(lv_obj_t *view)
     lv_obj_clean(view);
     memset(&V, 0, sizeof(V));
     if (l5_pt_read_map(&s_map) != ESP_OK) {
-        lv_obj_t *m = pane(view, true, 12, 1256);
+        lv_obj_t *m = pane(view, true, L5_GAP, L5_FULL_W);
         l5_col_header(m, "PARTITIONS", "UNREADABLE");
         lv_obj_t *l = l5_label(m, &l5_chakra_r17, L5_ON_PANEL_MUTED, s_map.why);
         lv_obj_set_style_pad_all(l, 30, 0);
@@ -1461,8 +1461,8 @@ void l5_pman_render(lv_obj_t *view)
         if (!sel) sel = &s_rows[0];
         strlcpy(s_sel, row_label(sel), sizeof(s_sel));
     }
-    main_pane(pane(view, true, 12, 816), sel);
-    V.side = pane(view, false, 840, 428);
+    main_pane(pane(view, true, L5_GAP, L5_MAIN_W), sel);
+    V.side = pane(view, false, L5_SIDE_X, L5_SIDE_W);
     lv_obj_add_event_cb(V.side, view_deleted_cb, LV_EVENT_DELETE, NULL);
     side_pane(V.side, sel);
 }

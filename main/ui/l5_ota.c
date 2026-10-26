@@ -1466,8 +1466,8 @@ void l5_ota_paint_wifi(void)
 void l5_ota_render(lv_obj_t *view)
 {
     lv_obj_clean(view);
-    lv_obj_t *m = l5w_pane(view, true, 12, 816);
-    lv_obj_t *s = l5w_pane(view, false, 840, 428);
+    lv_obj_t *m = l5w_pane(view, true, L5_GAP, L5_MAIN_W);
+    lv_obj_t *s = l5w_pane(view, false, L5_SIDE_X, L5_SIDE_W);
     O.main = m;
     O.side = s;
     O.list = NULL;

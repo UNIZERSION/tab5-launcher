@@ -1,8 +1,107 @@
+#include <string.h>
 #include "l5_theme.h"
 
 l5_palette_t L5P;
 l5_styles_t L5S;
+l5_colors_t L5C;
 lv_font_t l5_mono13_tall, l5_mono15_tall, l5_mono18_tall;
+
+/* ---------- themes ---------- */
+
+#define H(x) LV_COLOR_MAKE(((x) >> 16) & 0xff, ((x) >> 8) & 0xff, (x) & 0xff)
+
+const l5_theme_info_t l5_themes[L5_THEME_COUNT] = {
+    [L5_THEME_GRAPHITE] = {"graphite", "Graphite"},
+    [L5_THEME_MIDNIGHT] = {"midnight", "Midnight"},
+    [L5_THEME_DAYLIGHT] = {"daylight", "Daylight"},
+};
+
+/* Every field is set in every theme (tools/host_test: shots --taps checks that none is left at 0 by mistake). */
+static const l5_colors_t THEMES[L5_THEME_COUNT] = {
+    /* the launcher as it was designed: a light machined plate around black instrument panels */
+    [L5_THEME_GRAPHITE] = {
+        .plate = H(0xe3e4e7), .plate_hi = H(0xf7f7f8), .plate_lo = H(0xc5c7cc), .plate_edge = H(0xa7aab0),
+        .plate_bottom = H(0xdcdde1), .shine = H(0xffffff),
+        .ink = H(0x0f1012), .ink_soft = H(0x3a3d43), .muted = H(0x6f737c),
+        .panel = H(0x141518), .panel_2 = H(0x1d1f23), .panel_3 = H(0x292b30), .panel_line = H(0x34373d),
+        .panel_edge = H(0x000000), .on_panel = H(0xf2f3f5), .on_panel_muted = H(0x8e939c),
+        .btn_top = H(0x2b2d32), .btn_bot = H(0x141518), .btn_shadow = H(0x000000), .light_top = H(0xfdfdfd),
+        .slot_top = H(0x24262b), .slot_bot = H(0x16171a), .edge = H(0x3a3d43), .meter = H(0x33363c),
+        .track = H(0x2b2d32), .well = H(0x0b0c0e), .well_ink = H(0xd7d9dd), .scrim = H(0x08090b), .dim = H(0x4a4d54),
+        .chip = H(0x1a1b1f), .chip_edge = H(0x474a51),
+        .key_top = H(0x2e3035), .key_bot = H(0x1b1c20), .keyfn_top = H(0x3a3c42), .keyfn_bot = H(0x26282c),
+        .knob = H(0xd9dbdf), .ring = H(0xffffff),
+        .rail = H(0x16171a), .rail_edge = H(0x000000), .boot_top = H(0x202227), .boot_bot = H(0x0b0c0e),
+        .danger = H(0xff6b6b), .warn = H(0xf0a400),
+    },
+    /* dark everywhere: the plate and the side panes go dark too, the text on them light */
+    [L5_THEME_MIDNIGHT] = {
+        .plate = H(0x0a0b0d), .plate_hi = H(0x1a1c20), .plate_lo = H(0x2a2c31), .plate_edge = H(0x3a3d43),
+        .plate_bottom = H(0x0e0f12), .shine = H(0x2a2c31),
+        .ink = H(0xe9eaed), .ink_soft = H(0xb3b7be), .muted = H(0x7c818a),
+        .panel = H(0x121316), .panel_2 = H(0x1a1c20), .panel_3 = H(0x26282d), .panel_line = H(0x2e3036),
+        .panel_edge = H(0x000000), .on_panel = H(0xf2f3f5), .on_panel_muted = H(0x8a8f98),
+        .btn_top = H(0x27292e), .btn_bot = H(0x121316), .btn_shadow = H(0x000000), .light_top = H(0x2e3035),
+        .slot_top = H(0x1f2125), .slot_bot = H(0x131417), .edge = H(0x34373d), .meter = H(0x2e3036),
+        .track = H(0x26282d), .well = H(0x08090b), .well_ink = H(0xd7d9dd), .scrim = H(0x000000), .dim = H(0x44474e),
+        .chip = H(0x16171a), .chip_edge = H(0x3d4047),
+        .key_top = H(0x2a2c30), .key_bot = H(0x17181b), .keyfn_top = H(0x34363c), .keyfn_bot = H(0x222428),
+        .knob = H(0xd9dbdf), .ring = H(0xffffff),
+        .rail = H(0x0f1013), .rail_edge = H(0x000000), .boot_top = H(0x16171b), .boot_bot = H(0x050506),
+        .danger = H(0xff6b6b), .warn = H(0xf0a400),
+    },
+    /* light panels with dark text on a mid-grey plate; toasts and the cover art stay dark */
+    [L5_THEME_DAYLIGHT] = {
+        .plate = H(0xc8cbd1), .plate_hi = H(0xe6e8ec), .plate_lo = H(0xb0b4bb), .plate_edge = H(0x959aa2),
+        .plate_bottom = H(0xc2c5cb), .shine = H(0xf4f5f7),
+        .ink = H(0x111316), .ink_soft = H(0x3a3d43), .muted = H(0x5c6069),
+        .panel = H(0xebedf0), .panel_2 = H(0xfbfbfc), .panel_3 = H(0xdde0e4), .panel_line = H(0xcfd3d8),
+        .panel_edge = H(0xaeb2b9), .on_panel = H(0x15171a), .on_panel_muted = H(0x5e636c),
+        .btn_top = H(0xffffff), .btn_bot = H(0xe3e6ea), .btn_shadow = H(0xa3a7af), .light_top = H(0xffffff),
+        .slot_top = H(0xffffff), .slot_bot = H(0xeef0f3), .edge = H(0xbfc3ca), .meter = H(0xd3d6db),
+        .track = H(0xd8dbe0), .well = H(0xf4f5f7), .well_ink = H(0x2a2d32), .scrim = H(0x1b1d21), .dim = H(0xa4a8b0),
+        .chip = H(0xf4f5f7), .chip_edge = H(0xbcc0c7),
+        .key_top = H(0xffffff), .key_bot = H(0xe6e8ec), .keyfn_top = H(0xd9dce1), .keyfn_bot = H(0xc8ccd2),
+        .knob = H(0xffffff), .ring = H(0x15171a),
+        .rail = H(0xf2f3f5), .rail_edge = H(0xb8bcc3), .boot_top = H(0xf7f8fa), .boot_bot = H(0xd9dce1),
+        .danger = H(0xc62828), .warn = H(0xa86400), /* readable on the light panels */
+    },
+};
+
+static int s_theme;
+static uint32_t s_gen;
+static uint32_t s_accent_hex;
+static bool s_built; /* the styles exist: a rebuild resets them first (lv_style_init would leak their memory) */
+#define STYLE_INIT(st) (s_built ? lv_style_reset(st) : lv_style_init(st))
+
+int l5_theme_current(void)
+{
+    return s_theme;
+}
+
+uint32_t l5_theme_gen(void)
+{
+    return s_gen;
+}
+
+int l5_theme_find(const char *id)
+{
+    for (int i = 0; id && i < L5_THEME_COUNT; i++) {
+        if (strcmp(id, l5_themes[i].id) == 0) return i;
+    }
+    return -1;
+}
+
+const l5_colors_t *l5_theme_colors(int theme)
+{
+    return &THEMES[theme >= 0 && theme < L5_THEME_COUNT ? theme : L5_THEME_GRAPHITE];
+}
+
+static void colors(int theme)
+{
+    s_theme = theme >= 0 && theme < L5_THEME_COUNT ? theme : L5_THEME_GRAPHITE;
+    L5C = THEMES[s_theme];
+}
 
 /* src with a line that holds its fallback font's tallest letters too */
 static void tall_font(lv_font_t *f, const lv_font_t *src)
@@ -31,6 +130,7 @@ static void grad(lv_style_t *s, lv_color_t top, lv_color_t bottom)
 
 static void palette(uint32_t accent_hex)
 {
+    s_accent_hex = accent_hex;
     L5P.accent = lv_color_hex(accent_hex);
     uint8_t r = (accent_hex >> 16) & 0xff, g = (accent_hex >> 8) & 0xff, b = accent_hex & 0xff;
     /* app.js applyLook: --accent-ink */
@@ -59,37 +159,32 @@ static void accent_styles(void)
     lv_style_set_outline_color(&L5S.focus, L5P.accent);
 }
 
-void l5_theme_init(uint32_t accent_hex)
+static void build_styles(void)
 {
-    palette(accent_hex);
-    tall_font(&l5_mono13_tall, &l5_mono_13);
-    tall_font(&l5_mono15_tall, &l5_mono_15);
-    tall_font(&l5_mono18_tall, &l5_mono_18);
-
-    lv_style_init(&L5S.bare);
+    STYLE_INIT(&L5S.bare);
     lv_style_set_pad_all(&L5S.bare, 0);
     lv_style_set_border_width(&L5S.bare, 0);
     lv_style_set_bg_opa(&L5S.bare, LV_OPA_TRANSP);
     lv_style_set_radius(&L5S.bare, 0);
 
     /* .plate: light machined plate */
-    lv_style_init(&L5S.plate);
+    STYLE_INIT(&L5S.plate);
     grad(&L5S.plate, L5_PLATE_HI, L5_PLATE);
     lv_style_set_bg_grad_stop(&L5S.plate, 153); /* plate-hi -> plate at 60% */
     lv_style_set_border_side(&L5S.plate, LV_BORDER_SIDE_TOP);
-    lv_style_set_border_color(&L5S.plate, L5_WHITE);
+    lv_style_set_border_color(&L5S.plate, L5C.shine);
     lv_style_set_border_width(&L5S.plate, 1);
     lv_style_set_text_color(&L5S.plate, L5_INK);
 
     /* .dark: black instrument panel */
-    lv_style_init(&L5S.dark);
+    STYLE_INIT(&L5S.dark);
     grad(&L5S.dark, L5_PANEL_2, L5_PANEL);
-    lv_style_set_border_color(&L5S.dark, L5_BLACK);
+    lv_style_set_border_color(&L5S.dark, L5C.panel_edge);
     lv_style_set_border_width(&L5S.dark, 1);
     lv_style_set_text_color(&L5S.dark, L5_ON_PANEL);
 
     /* .col-h */
-    lv_style_init(&L5S.col_h);
+    STYLE_INIT(&L5S.col_h);
     lv_style_set_height(&L5S.col_h, 52);
     lv_style_set_width(&L5S.col_h, lv_pct(100));
     lv_style_set_pad_left(&L5S.col_h, 18);
@@ -106,14 +201,14 @@ void l5_theme_init(uint32_t accent_hex)
     lv_style_set_text_color(&L5S.col_h, L5_ON_PANEL);
 
     /* .act and variants */
-    lv_style_init(&L5S.act);
-    grad(&L5S.act, lv_color_hex(0x2b2d32), lv_color_hex(0x141518));
+    STYLE_INIT(&L5S.act);
+    grad(&L5S.act, L5C.btn_top, L5C.btn_bot);
     lv_style_set_radius(&L5S.act, 4);
     lv_style_set_height(&L5S.act, 60);
     lv_style_set_text_color(&L5S.act, L5_ON_PANEL);
     lv_style_set_text_font(&L5S.act, &l5_mono_15);
     lv_style_set_text_letter_space(&L5S.act, 1);
-    lv_style_set_shadow_color(&L5S.act, L5_BLACK);
+    lv_style_set_shadow_color(&L5S.act, L5C.btn_shadow);
     lv_style_set_shadow_width(&L5S.act, 2);
     lv_style_set_shadow_offset_y(&L5S.act, 3);
     lv_style_set_shadow_opa(&L5S.act, LV_OPA_COVER);
@@ -125,29 +220,29 @@ void l5_theme_init(uint32_t accent_hex)
     lv_style_set_flex_cross_place(&L5S.act, LV_FLEX_ALIGN_CENTER);
     lv_style_set_flex_track_place(&L5S.act, LV_FLEX_ALIGN_CENTER);
 
-    lv_style_init(&L5S.act_pressed);
+    STYLE_INIT(&L5S.act_pressed);
     lv_style_set_translate_y(&L5S.act_pressed, 2);
     lv_style_set_shadow_offset_y(&L5S.act_pressed, 1);
 
-    lv_style_init(&L5S.act_primary);
+    STYLE_INIT(&L5S.act_primary);
     lv_style_set_bg_grad_dir(&L5S.act_primary, LV_GRAD_DIR_VER);
     lv_style_set_shadow_width(&L5S.act_primary, 14);
     lv_style_set_shadow_offset_y(&L5S.act_primary, 0);
     lv_style_set_shadow_opa(&L5S.act_primary, 115);
     lv_style_set_text_color(&L5S.act_primary, L5_WHITE);
 
-    lv_style_init(&L5S.act_light);
-    grad(&L5S.act_light, lv_color_hex(0xfdfdfd), L5_PLATE);
+    STYLE_INIT(&L5S.act_light);
+    grad(&L5S.act_light, L5C.light_top, L5_PLATE);
     lv_style_set_text_color(&L5S.act_light, L5_INK);
     lv_style_set_shadow_color(&L5S.act_light, L5_PLATE_EDGE);
     lv_style_set_border_width(&L5S.act_light, 1);
     lv_style_set_border_color(&L5S.act_light, L5_PLATE_LO);
 
-    lv_style_init(&L5S.act_disabled);
+    STYLE_INIT(&L5S.act_disabled);
     lv_style_set_opa(&L5S.act_disabled, 89);
 
     /* .dot */
-    lv_style_init(&L5S.dot);
+    STYLE_INIT(&L5S.dot);
     lv_style_set_size(&L5S.dot, 10, 10);
     lv_style_set_radius(&L5S.dot, LV_RADIUS_CIRCLE);
     lv_style_set_bg_opa(&L5S.dot, LV_OPA_COVER);
@@ -156,34 +251,34 @@ void l5_theme_init(uint32_t accent_hex)
     lv_style_set_border_width(&L5S.dot, 0);
 
     /* .slot card */
-    lv_style_init(&L5S.slot);
-    grad(&L5S.slot, lv_color_hex(0x24262b), lv_color_hex(0x16171a));
+    STYLE_INIT(&L5S.slot);
+    grad(&L5S.slot, L5C.slot_top, L5C.slot_bot);
     lv_style_set_border_width(&L5S.slot, 1);
-    lv_style_set_border_color(&L5S.slot, lv_color_hex(0x3a3d43));
+    lv_style_set_border_color(&L5S.slot, L5C.edge);
     lv_style_set_radius(&L5S.slot, 4);
-    lv_style_set_shadow_color(&L5S.slot, L5_BLACK);
+    lv_style_set_shadow_color(&L5S.slot, L5C.btn_shadow);
     lv_style_set_shadow_width(&L5S.slot, 2);
     lv_style_set_shadow_offset_y(&L5S.slot, 3);
     lv_style_set_shadow_opa(&L5S.slot, LV_OPA_COVER);
     lv_style_set_pad_all(&L5S.slot, 0); /* padding 40/18/16 lives in the card's inner column */
     lv_style_set_text_color(&L5S.slot, L5_ON_PANEL);
 
-    lv_style_init(&L5S.slot_sel);
+    STYLE_INIT(&L5S.slot_sel);
     lv_style_set_shadow_width(&L5S.slot_sel, 24);
     lv_style_set_shadow_offset_y(&L5S.slot_sel, 0);
     lv_style_set_shadow_spread(&L5S.slot_sel, 1);
     lv_style_set_shadow_opa(&L5S.slot_sel, 90);
 
-    lv_style_init(&L5S.meter);
+    STYLE_INIT(&L5S.meter);
     lv_style_set_bg_opa(&L5S.meter, LV_OPA_COVER);
-    lv_style_set_bg_color(&L5S.meter, lv_color_hex(0x33363c));
+    lv_style_set_bg_color(&L5S.meter, L5C.meter);
     lv_style_set_radius(&L5S.meter, 0);
     lv_style_set_height(&L5S.meter, 8);
-    lv_style_init(&L5S.meter_ind);
+    STYLE_INIT(&L5S.meter_ind);
     lv_style_set_bg_opa(&L5S.meter_ind, LV_OPA_COVER);
     lv_style_set_radius(&L5S.meter_ind, 0);
 
-    lv_style_init(&L5S.pick);
+    STYLE_INIT(&L5S.pick);
     lv_style_set_bg_opa(&L5S.pick, LV_OPA_COVER);
     lv_style_set_radius(&L5S.pick, 2);
     lv_style_set_pad_hor(&L5S.pick, 10);
@@ -191,13 +286,13 @@ void l5_theme_init(uint32_t accent_hex)
     lv_style_set_text_font(&L5S.pick, &l5_mono_12);
     lv_style_set_text_letter_space(&L5S.pick, 1);
 
-    lv_style_init(&L5S.scrim);
+    STYLE_INIT(&L5S.scrim);
     lv_style_set_bg_opa(&L5S.scrim, 158);
-    lv_style_set_bg_color(&L5S.scrim, lv_color_hex(0x08090b));
+    lv_style_set_bg_color(&L5S.scrim, L5C.scrim);
     lv_style_set_border_width(&L5S.scrim, 0);
     lv_style_set_radius(&L5S.scrim, 0);
 
-    lv_style_init(&L5S.menu_btn);
+    STYLE_INIT(&L5S.menu_btn);
     lv_style_set_bg_opa(&L5S.menu_btn, LV_OPA_TRANSP);
     lv_style_set_height(&L5S.menu_btn, 62);
     lv_style_set_width(&L5S.menu_btn, lv_pct(100));
@@ -212,10 +307,10 @@ void l5_theme_init(uint32_t accent_hex)
     lv_style_set_flex_flow(&L5S.menu_btn, LV_FLEX_FLOW_ROW);
     lv_style_set_flex_cross_place(&L5S.menu_btn, LV_FLEX_ALIGN_CENTER);
     lv_style_set_flex_track_place(&L5S.menu_btn, LV_FLEX_ALIGN_CENTER);
-    lv_style_init(&L5S.menu_btn_pr);
+    STYLE_INIT(&L5S.menu_btn_pr);
     lv_style_set_bg_opa(&L5S.menu_btn_pr, 64);
 
-    lv_style_init(&L5S.toast);
+    STYLE_INIT(&L5S.toast);
     lv_style_set_bg_opa(&L5S.toast, LV_OPA_COVER);
     lv_style_set_bg_color(&L5S.toast, lv_color_hex(0x0e0f11));
     lv_style_set_text_color(&L5S.toast, L5_WHITE);
@@ -231,30 +326,51 @@ void l5_theme_init(uint32_t accent_hex)
     lv_style_set_shadow_opa(&L5S.toast, 102);
 
     /* feedback and state styles shared by the views: an accent change restyles them in place */
-    lv_style_init(&L5S.press_tint); /* row:active */
+    STYLE_INIT(&L5S.press_tint); /* row:active */
     lv_style_set_bg_opa(&L5S.press_tint, 64);
-    lv_style_init(&L5S.press_fill); /* .step button:active */
+    STYLE_INIT(&L5S.press_fill); /* .step button:active */
     lv_style_set_bg_opa(&L5S.press_fill, LV_OPA_COVER);
-    lv_style_init(&L5S.press_ring); /* swatch, card, flash map segment:active */
+    STYLE_INIT(&L5S.press_ring); /* swatch, card, flash map segment:active */
     lv_style_set_outline_width(&L5S.press_ring, 2);
-    lv_style_set_outline_color(&L5S.press_ring, L5_WHITE);
+    lv_style_set_outline_color(&L5S.press_ring, L5C.ring);
     lv_style_set_outline_opa(&L5S.press_ring, 170);
-    lv_style_init(&L5S.tgl_on); /* .tgl.on */
+    STYLE_INIT(&L5S.tgl_on); /* .tgl.on */
     lv_style_set_shadow_width(&L5S.tgl_on, 10);
     lv_style_set_shadow_opa(&L5S.tgl_on, 128);
-    lv_style_init(&L5S.swatch_sel); /* swatch [aria-pressed]: white ring + black ring */
+    STYLE_INIT(&L5S.swatch_sel); /* swatch [aria-pressed]: white ring + black ring */
     lv_style_set_outline_width(&L5S.swatch_sel, 3);
     lv_style_set_outline_color(&L5S.swatch_sel, L5_WHITE);
     lv_style_set_shadow_width(&L5S.swatch_sel, 0);
     lv_style_set_shadow_spread(&L5S.swatch_sel, 5);
     lv_style_set_shadow_color(&L5S.swatch_sel, L5_BLACK);
     lv_style_set_shadow_opa(&L5S.swatch_sel, LV_OPA_COVER);
-    lv_style_init(&L5S.focus); /* keyboard focus: an accent ring 3 px inside the edge */
+    STYLE_INIT(&L5S.focus); /* keyboard focus: an accent ring 3 px inside the edge */
     lv_style_set_outline_width(&L5S.focus, 2);
     lv_style_set_outline_pad(&L5S.focus, -3);
     lv_style_set_outline_opa(&L5S.focus, LV_OPA_COVER);
 
     accent_styles();
+    s_built = true;
+}
+
+void l5_theme_init(uint32_t accent_hex, int theme)
+{
+    tall_font(&l5_mono13_tall, &l5_mono_13);
+    tall_font(&l5_mono15_tall, &l5_mono_15);
+    tall_font(&l5_mono18_tall, &l5_mono_18);
+    colors(theme);
+    palette(accent_hex); /* accent_lo mixes with the theme's panel */
+    build_styles();
+}
+
+void l5_theme_set(int theme)
+{
+    l5_dither_forget(); /* the old theme's gradients would fill the table */
+    colors(theme);
+    palette(s_accent_hex);
+    build_styles();
+    s_gen++;
+    lv_obj_report_style_change(NULL);
 }
 
 void l5_theme_set_accent(uint32_t accent_hex)

@@ -17,7 +17,7 @@
 #include "l5_ui.h"
 #include "l5_wifi.h"
 
-l5_config_t g_cfg = {.bright = 70, .dim = 30, .screenOff = 120, .color = "red", .askSpiffs = true, .onlyBins = false,
+l5_config_t g_cfg = {.bright = 70, .dim = 30, .screenOff = 120, .color = "red", .theme = "graphite", .askSpiffs = true, .onlyBins = false,
                      .bootTime = 3, .wifiAuto = true, .deepSleepStart = true, .scheme = "custom"};
 l5_slots_t g_slots = {.n = 1, .slot_kb = 11264, .boot = 0, .scheme = "Custom"}; /* l5_slots_scan() always names it */
 int shots_backlight = -1; /* last l5_board_backlight() value */
@@ -114,6 +114,7 @@ l5_charge_t l5_board_battery_state(bool fresh)
 /* l5_sys.c: a full-screen system screen on #sys */
 lv_obj_t *l5_sys_show(lv_color_t top, lv_color_t bottom)
 {
+    l5_boot_screen_stop();
     lv_obj_t *sys = l5_ui_sys();
     lv_obj_clean(sys);
     l5_ui_covered(true);
@@ -122,18 +123,23 @@ lv_obj_t *l5_sys_show(lv_color_t top, lv_color_t bottom)
     lv_obj_add_flag(el, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_opa(el, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(el, top, 0);
-    lv_obj_set_style_bg_grad_color(el, bottom, 0);
-    lv_obj_set_style_bg_grad_dir(el, LV_GRAD_DIR_VER, 0);
+    if (!lv_color_eq(top, bottom)) { /* the bootscreen, dithered as on the device */
+        lv_obj_set_style_bg_grad_color(el, bottom, 0);
+        lv_obj_set_style_bg_grad_dir(el, LV_GRAD_DIR_VER, 0);
+        l5_dither_hook(el);
+    }
     return el;
 }
 void l5_sys_hide(void)
 {
+    l5_boot_screen_stop();
     lv_obj_clean(l5_ui_sys());
     l5_ui_covered(false);
 }
-/* as l5_sys.c without the bootscreen: the key goes to the system screen (Charge Mode) */
+/* as l5_sys.c: the bootscreen (l5_boot.c) enters the launcher, another system screen (Charge Mode) gets the key */
 bool l5_sys_key(const l5_key_t *k)
 {
+    if (l5_boot_screen_key(k)) return true;
     lv_obj_t *el = lv_obj_get_child(l5_ui_sys(), 0);
     if (el) lv_obj_send_event(el, l5_key_event(), (void *)k);
     return el != NULL;
@@ -189,6 +195,8 @@ esp_err_t l5_slots_erase(int index, void (*progress)(int pct, void *user), void 
 }
 int shots_boots; /* l5_boot_app() calls: BOOT */
 void l5_boot_app(void) { shots_boots++; }
+int shots_auto_boots; /* l5_boot_app_auto() calls: the bootscreen's countdown ran out */
+void l5_boot_app_auto(void) { shots_auto_boots++; }
 
 int l5_slots_list(char *out, size_t len)
 {

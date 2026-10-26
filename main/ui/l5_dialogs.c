@@ -89,7 +89,7 @@ static lv_obj_t *modal_create(lv_obj_t *scrim, int32_t width, const char *kind, 
     lv_obj_set_style_max_height(m, 620, 0);
     lv_obj_center(m);
     lv_obj_set_flex_flow(m, LV_FLEX_FLOW_COLUMN);
-    l5_chamfer(m, L5_CHAMFER, lv_color_hex(0x5a5b5e)); /* plate under the .62 scrim */
+    l5_chamfer(m, L5_CHAMFER, l5_mix(L5_PLATE, L5C.scrim, 97)); /* plate under the .62 scrim */
 
     lv_obj_t *mh = l5_box(m);
     lv_obj_set_size(mh, lv_pct(100), LV_SIZE_CONTENT);
@@ -437,7 +437,7 @@ void l5_text_dialog(const char *title, const char *note, char *text, uint32_t pi
     lv_obj_set_style_pad_ver(body, 12, 0);
     lv_obj_set_style_pad_hor(body, 28, 0);
     lv_obj_set_style_bg_opa(body, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(body, lv_color_hex(0x0e0f11), 0);
+    lv_obj_set_style_bg_color(body, L5C.well, 0);
     lv_obj_set_style_border_side(body, LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_BOTTOM, 0);
     lv_obj_set_style_border_width(body, 1, 0);
     lv_obj_set_style_border_color(body, L5_PANEL_LINE, 0);
@@ -454,7 +454,7 @@ void l5_text_dialog(const char *title, const char *note, char *text, uint32_t pi
         lv_obj_t *l = lv_label_create(body);
         lv_obj_set_width(l, lv_pct(100));
         lv_obj_set_style_text_font(l, &l5_mono15_tall, 0);
-        lv_obj_set_style_text_color(l, lv_color_hex(0xd7d9dd), 0);
+        lv_obj_set_style_text_color(l, L5C.well_ink, 0);
         lv_obj_set_style_text_line_space(l, 3, 0);
         lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
         lv_label_set_text_static(l, p);
@@ -519,7 +519,7 @@ l5_progress_t *l5_progress_open(const char *kind, const char *title)
     lv_obj_remove_style_all(p->bar);
     lv_obj_set_size(p->bar, lv_pct(100), 14);
     lv_obj_set_style_bg_opa(p->bar, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(p->bar, lv_color_hex(0x2b2d32), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(p->bar, L5C.track, LV_PART_MAIN);
     lv_obj_set_style_border_width(p->bar, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(p->bar, L5_BLACK, LV_PART_MAIN);
     lv_obj_set_style_radius(p->bar, 2, LV_PART_MAIN);
@@ -597,7 +597,8 @@ void l5_toast(const char *fmt, ...)
     lv_obj_t *t = lv_label_create(box);
     lv_obj_add_style(t, &L5S.toast, 0);
     lv_label_set_text(t, msg);
-    lv_obj_align(t, LV_ALIGN_BOTTOM_MID, 0, -26);
+    /* the middle of the view right of the rail; a system screen (bootscreen, Charge Mode) covers the whole screen */
+    lv_obj_align(t, LV_ALIGN_BOTTOM_MID, lv_obj_get_child_count(l5_ui_sys()) ? 0 : L5_RAIL_W / 2, -26);
     lv_obj_fade_in(t, 200, 0);
     /* not lv_obj_fade_out(): it applies its start value at once and removes the fade-in running on the
        same object (LVGL 9.3 lv_anim_start), which left every toast at opacity 0 */

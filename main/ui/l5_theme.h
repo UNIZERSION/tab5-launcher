@@ -5,34 +5,72 @@
 #include "l5_dither.h"
 #include "l5_icons.h"
 
-/* :root tokens (device screen, same in both page themes) */
-#define L5_PLATE          lv_color_hex(0xe3e4e7)
-#define L5_PLATE_HI       lv_color_hex(0xf7f7f8)
-#define L5_PLATE_LO       lv_color_hex(0xc5c7cc)
-#define L5_PLATE_EDGE     lv_color_hex(0xa7aab0)
-#define L5_PLATE_BOTTOM   lv_color_hex(0xdcdde1)
-#define L5_INK            lv_color_hex(0x0f1012)
-#define L5_INK_SOFT       lv_color_hex(0x3a3d43)
-#define L5_MUTED          lv_color_hex(0x6f737c)
-#define L5_PANEL          lv_color_hex(0x141518)
-#define L5_PANEL_2        lv_color_hex(0x1d1f23)
-#define L5_PANEL_3        lv_color_hex(0x292b30)
-#define L5_PANEL_LINE     lv_color_hex(0x34373d)
-#define L5_ON_PANEL       lv_color_hex(0xf2f3f5)
-#define L5_ON_PANEL_MUTED lv_color_hex(0x8e939c)
+/* Colours of the active theme (l5_theme_set): Graphite (the original light plate + black panels), Midnight (dark
+   plate too) or Daylight (light panels). Read through the L5_* names below; they are runtime values since
+   26.10.2026, so never use them in a static initializer. */
+typedef struct {
+    lv_color_t plate, plate_hi, plate_lo, plate_edge, plate_bottom; /* the frame around the panels, the side panes */
+    lv_color_t shine;              /* 1 px top edge of the side panes */
+    lv_color_t ink, ink_soft, muted; /* text on the plate */
+    lv_color_t panel, panel_2, panel_3, panel_line, panel_edge; /* panels: bottom, top, raised, divider, border */
+    lv_color_t on_panel, on_panel_muted;                          /* text on the panels */
+    lv_color_t btn_top, btn_bot, btn_shadow, light_top;           /* .act gradient and shadow, .act.light top */
+    lv_color_t slot_top, slot_bot; /* HOME cards */
+    lv_color_t edge;               /* card, chip and switch-track borders */
+    lv_color_t meter, track;       /* empty part of meters, progress bars and the boot ring */
+    lv_color_t well, well_ink;     /* deep backgrounds (text viewer, keyboard field) and their text */
+    lv_color_t scrim, dim;         /* the veil under dialogs; dim icons on empty cards */
+    lv_color_t chip, chip_edge;    /* chips and small framed buttons */
+    lv_color_t key_top, key_bot, keyfn_top, keyfn_bot, knob; /* on-screen keyboard keys, switch knob */
+    lv_color_t ring;               /* pressed outline of cards, swatches and map segments */
+    lv_color_t rail, rail_edge;    /* the side menu */
+    lv_color_t boot_top, boot_bot; /* the bootscreen gradient */
+    lv_color_t danger, warn;       /* destructive actions, warnings: darker in Daylight */
+} l5_colors_t;
+extern l5_colors_t L5C;
+
+typedef enum { L5_THEME_GRAPHITE, L5_THEME_MIDNIGHT, L5_THEME_DAYLIGHT, L5_THEME_COUNT } l5_theme_id_t;
+typedef struct {
+    const char *id;    /* config.conf "theme" */
+    const char *label; /* CFG */
+} l5_theme_info_t;
+extern const l5_theme_info_t l5_themes[L5_THEME_COUNT];
+
+#define L5_PLATE          (L5C.plate)
+#define L5_PLATE_HI       (L5C.plate_hi)
+#define L5_PLATE_LO       (L5C.plate_lo)
+#define L5_PLATE_EDGE     (L5C.plate_edge)
+#define L5_PLATE_BOTTOM   (L5C.plate_bottom)
+#define L5_INK            (L5C.ink)
+#define L5_INK_SOFT       (L5C.ink_soft)
+#define L5_MUTED          (L5C.muted)
+#define L5_PANEL          (L5C.panel)
+#define L5_PANEL_2        (L5C.panel_2)
+#define L5_PANEL_3        (L5C.panel_3)
+#define L5_PANEL_LINE     (L5C.panel_line)
+#define L5_ON_PANEL       (L5C.on_panel)
+#define L5_ON_PANEL_MUTED (L5C.on_panel_muted)
+#define L5_WARN           (L5C.warn)
+#define L5_DANGER         (L5C.danger)
+/* the same in every theme */
 #define L5_OK             lv_color_hex(0x1fb25a)
-#define L5_WARN           lv_color_hex(0xf0a400)
-#define L5_DANGER         lv_color_hex(0xff6b6b)
 #define L5_BLACK          lv_color_hex(0x000000)
 #define L5_WHITE          lv_color_hex(0xffffff)
 
 /* Layout constants (px on the 1280x720 landscape screen) */
 #define L5_SCREEN_W   1280
 #define L5_SCREEN_H   720
-#define L5_TOPBAR_H   72 /* 58 before 19.10.2026: the tab keys were hard to hit on the Tab5 */
-#define L5_VIEW_H     (L5_SCREEN_H - L5_TOPBAR_H) /* .views: top 72, height 648 */
-#define L5_PANEL_Y    8   /* .vw-main / .vw-side / .vw-col / .vw-full: top 8, height 632 */
+/* The tabs are a rail down the left edge (l5_rail.c; a 72 px top bar until 26.10.2026), the views fill the rest. */
+#define L5_RAIL_W     112
+#define L5_VIEW_W     (L5_SCREEN_W - L5_RAIL_W) /* 1168 */
+#define L5_VIEW_H     L5_SCREEN_H
+#define L5_GAP        12  /* between the rail, the panels and the screen's edges */
+#define L5_PANEL_Y    L5_GAP /* .vw-main / .vw-side / .vw-col / .vw-full: top 12, height 696 */
 #define L5_PANEL_H    (L5_VIEW_H - 2 * L5_PANEL_Y)
+#define L5_FULL_W     (L5_VIEW_W - 2 * L5_GAP) /* one panel across the view (HOME, PMAN without a table) */
+#define L5_SIDE_W     428 /* the light side pane of SD, OTA and PMAN */
+#define L5_MAIN_W     (L5_VIEW_W - 3 * L5_GAP - L5_SIDE_W) /* the dark pane left of it: 704 */
+#define L5_SIDE_X     (2 * L5_GAP + L5_MAIN_W)
 #define L5_CHAMFER    18
 
 typedef struct {
@@ -77,9 +115,16 @@ extern l5_styles_t L5S;
    label does not cut the accents off. */
 extern lv_font_t l5_mono13_tall, l5_mono15_tall, l5_mono18_tall;
 
-void l5_theme_init(uint32_t accent_hex);
+void l5_theme_init(uint32_t accent_hex, int theme);
 /* Change the accent at runtime (CFG > UI color): restyles every object using the set. */
 void l5_theme_set_accent(uint32_t accent_hex);
+/* Switch the colours (CFG > Theme): the shared styles are rebuilt and every object using them restyled. Objects
+   with their own colours (views, the rail) are rebuilt by l5_ui_retheme(). */
+void l5_theme_set(int theme);
+int l5_theme_current(void);
+int l5_theme_find(const char *id);  /* index in l5_themes, -1 when unknown */
+const l5_colors_t *l5_theme_colors(int theme); /* any theme's colours (CFG's previews) */
+uint32_t l5_theme_gen(void);        /* changes with every l5_theme_set: cached styles elsewhere rebuild then */
 
 /* helpers */
 lv_obj_t *l5_box(lv_obj_t *parent);                          /* plain container, no style */

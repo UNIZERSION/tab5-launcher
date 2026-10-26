@@ -15,6 +15,7 @@ typedef struct {
     uint16_t dim;         /* idle seconds before dimming, 0 = off (0,10,20,30,60,120,300) */
     uint16_t screenOff;   /* idle seconds before the backlight goes off, 0 = never (0,60,120,300,600,1800) */
     char color[12];       /* UI accent id, see l5_colors */
+    char theme[12];       /* "graphite", "midnight" or "daylight" (ui/l5_theme.c l5_themes; since 26.10.2026) */
     uint16_t rot;         /* 0 = landscape, 180 = landscape inverted */
     bool askSpiffs;       /* ask before installing a SPIFFS image */
     bool onlyBins;        /* SD manager lists only .bin files */

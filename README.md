@@ -6,18 +6,21 @@ An M5Launcher-style app launcher for the M5Stack Tab5 (ESP32-P4). It installs ap
 
 | | |
 |---|---|
-| ![HOME with two app slots](docs/images/home-two-slots.png) | ![SD file manager with a .bin selected](docs/images/sd.png) |
+| ![Boot screen with the countdown ring](docs/images/boot.png) | ![HOME carousel with four app slots](docs/images/home-four-slots.png) |
+| ![SD file manager with a .bin selected](docs/images/sd.png) | ![HOME with two app slots](docs/images/home-two-slots.png) |
+| ![Midnight theme](docs/images/theme-midnight.png) | ![Daylight theme](docs/images/theme-daylight.png) |
 | ![PMAN partition manager](docs/images/pman.png) | ![CFG settings](docs/images/cfg.png) |
 
 *Screens rendered on a PC from the firmware's own UI code (`tools/host_test/ui_shots.py`).*
 
 ## Features
 
-- **HOME:** apps in flash, choosing the boot app, BOOT.
+- **Boot screen:** the next app in a countdown ring, LAUNCHER, START NOW, the other apps one tap away; a tap stops the countdown.
+- **HOME:** apps in flash as a carousel, choosing the boot app, BOOT. The tabs are a menu down the left edge.
 - **SD:** file manager (copy, rename, new folder, delete, text viewer) and installing `.bin` files, merged images included.
 - **OTA:** the Tab5 firmware catalog, downloads straight from the M5Stack server without any device identifier, favorites and your own links.
 - **PMAN:** partition schemes, AUTO PARTITION, partition backup and restore.
-- **CFG:** brightness, dimming and screen off, accent color, Wi-Fi through the ESP32-C6, Charge Mode with the real battery state.
+- **CFG:** brightness, dimming and screen off, accent color, three themes (Graphite, Midnight, Daylight), Wi-Fi through the ESP32-C6, Charge Mode with the real battery state.
 - **Safeguards:** boot-loop guard, a warning for apps made for older Tab5 hardware, and the Aurora Player PIN partition left untouched in every scheme.
 
 ## Install

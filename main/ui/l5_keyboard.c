@@ -90,10 +90,8 @@ static void styles_init(void)
         lv_style_init(&s_key); /* .key */
         lv_style_set_radius(&s_key, 4);
         lv_style_set_bg_opa(&s_key, LV_OPA_COVER);
-        lv_style_set_bg_color(&s_key, lv_color_hex(0x2e3035));
-        lv_style_set_bg_grad_color(&s_key, lv_color_hex(0x1b1c20));
         lv_style_set_bg_grad_dir(&s_key, LV_GRAD_DIR_VER);
-        lv_style_set_shadow_color(&s_key, L5_BLACK); /* 0 3px 0 #000 */
+        /* 0 3px 0 #000: the colour below with the theme's */
         lv_style_set_shadow_width(&s_key, 2);
         lv_style_set_shadow_offset_y(&s_key, 3);
         lv_style_set_shadow_opa(&s_key, LV_OPA_COVER);
@@ -102,11 +100,8 @@ static void styles_init(void)
         lv_style_set_border_color(&s_key, L5_WHITE);
         lv_style_set_border_opa(&s_key, 20);
         lv_style_set_text_font(&s_key, &l5_chakra_b24);
-        lv_style_set_text_color(&s_key, L5_ON_PANEL);
 
         lv_style_init(&s_key_fn); /* .key.fn */
-        lv_style_set_bg_color(&s_key_fn, lv_color_hex(0x3a3c42));
-        lv_style_set_bg_grad_color(&s_key_fn, lv_color_hex(0x26282c));
         lv_style_set_text_font(&s_key_fn, &s_font_fn);
         lv_style_set_text_letter_space(&s_key_fn, 1);
 
@@ -116,7 +111,13 @@ static void styles_init(void)
         lv_style_set_shadow_offset_y(&s_key_pr, 1);
         done = true;
     }
-    /* the accent can change between two keyboards (CFG > UI color) */
+    /* the theme and the accent can change between two keyboards (CFG > Theme, UI color) */
+    lv_style_set_bg_color(&s_key, L5C.key_top);
+    lv_style_set_bg_grad_color(&s_key, L5C.key_bot);
+    lv_style_set_shadow_color(&s_key, L5C.btn_shadow);
+    lv_style_set_text_color(&s_key, L5_ON_PANEL);
+    lv_style_set_bg_color(&s_key_fn, L5C.keyfn_top);
+    lv_style_set_bg_grad_color(&s_key_fn, L5C.keyfn_bot);
     lv_style_set_bg_color(&s_key_ok, L5P.accent);
     lv_style_set_bg_grad_color(&s_key_ok, L5P.accent_lo);
     lv_style_set_bg_color(&s_key_pr, L5P.accent);
@@ -385,7 +386,7 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
     k->wrap = l5_box(l5_ui_layer());
     lv_obj_set_size(k->wrap, L5_SCREEN_W, L5_SCREEN_H);
     lv_obj_set_style_bg_opa(k->wrap, 140, 0);
-    lv_obj_set_style_bg_color(k->wrap, lv_color_hex(0x08090b), 0);
+    lv_obj_set_style_bg_color(k->wrap, L5C.scrim, 0);
     lv_obj_add_flag(k->wrap, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(k->wrap, delete_cb, LV_EVENT_DELETE, k);
     lv_obj_add_event_cb(k->wrap, kb_key_cb, l5_key_event(), k);
@@ -415,7 +416,7 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
     lv_obj_set_flex_grow(k->field, 1);
     lv_obj_set_style_pad_hor(k->field, 16, 0);
     lv_obj_set_style_bg_opa(k->field, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(k->field, lv_color_hex(0x0b0c0e), 0);
+    lv_obj_set_style_bg_color(k->field, L5C.well, 0);
     lv_obj_set_style_border_width(k->field, 1, 0);
     lv_obj_set_style_border_color(k->field, L5P.accent, 0);
     lv_obj_set_style_radius(k->field, 3, 0);
@@ -423,7 +424,7 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
     lv_obj_set_flex_align(k->field, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_add_flag(k->field, LV_OBJ_FLAG_CLICKABLE); /* with the keyboard plugged in: the on-screen keys */
     lv_obj_add_event_cb(k->field, field_cb, LV_EVENT_CLICKED, k);
-    k->tx = l5_label(k->field, &s_font_field, L5_WHITE, "");
+    k->tx = l5_label(k->field, &s_font_field, L5_ON_PANEL, "");
     k->caret = l5_box(k->field);
     lv_obj_set_size(k->caret, 2, 30);
     lv_obj_set_style_margin_left(k->caret, 2, 0);

@@ -5,6 +5,9 @@
 #include <string.h>
 #include "l5_ui.h"
 
+/* the emblem is dark artwork in every theme (l5_theme.c): its text stays light */
+#define COVER_INK lv_color_hex(0xf2f3f5)
+
 typedef struct {
     uint32_t a;
 } rng_t;
@@ -27,7 +30,7 @@ static float rnd(rng_t *r) /* mulberry32 */
     return (float)(t ^ (t >> 14)) / 4294967296.0f;
 }
 
-static void initials(const char *title, char out[3])
+void l5_cover_initials(const char *title, char out[3])
 {
     int n = 0;
     bool in_word = false;
@@ -206,9 +209,9 @@ static void draw(lv_obj_t *canvas, int32_t W, const char *seed, const char *titl
 
     const cover_fonts_t fn = cover_fonts(W);
     char ini[3];
-    initials(title && *title ? title : seed, ini);
+    l5_cover_initials(title && *title ? title : seed, ini);
     int32_t ty = (int32_t)(cy + cs / 2 + 2 * f) - lv_font_get_line_height(fn.initials) / 2;
-    text(&c, ini, fn.initials, L5_ON_PANEL, (int32_t)cx, ty, (int32_t)(cx + cs), LV_TEXT_ALIGN_CENTER);
+    text(&c, ini, fn.initials, COVER_INK, (int32_t)cx, ty, (int32_t)(cx + cs), LV_TEXT_ALIGN_CENTER);
 
     /* every label keeps its own buffer until lv_canvas_finish_layer(): the draw tasks only keep the pointer,
        so one buffer reused for the slot line and the name drew the name twice */
@@ -237,7 +240,7 @@ static void draw(lv_obj_t *canvas, int32_t W, const char *seed, const char *titl
         lv_draw_label_dsc_init(&d);
         d.text = name;
         d.font = fn.title;
-        d.color = L5_ON_PANEL;
+        d.color = COVER_INK;
         d.flag = LV_TEXT_FLAG_EXPAND; /* one line: a wrapped name ran into the line under it */
         lv_area_t ta = {(int32_t)(26 * f), y0, W - (int32_t)(26 * f), y0 + lv_font_get_line_height(fn.title)};
         lv_draw_label(&layer, &d, &ta);

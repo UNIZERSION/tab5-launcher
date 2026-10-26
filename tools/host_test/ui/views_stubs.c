@@ -300,6 +300,7 @@ void l5_config_defaults(l5_config_t *cfg)
     cfg->dim = 30;
     cfg->screenOff = 120;
     strcpy(cfg->color, "red");
+    strcpy(cfg->theme, "graphite");
     cfg->askSpiffs = cfg->onlyBins = cfg->wifiAuto = cfg->deepSleepStart = true;
     cfg->bootTime = 3;
     strcpy(cfg->scheme, "default");

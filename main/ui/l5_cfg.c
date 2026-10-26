@@ -3,7 +3,7 @@
    A change updates only its own widgets (value, toggle, swatch, title): rebuilding the view and
    redrawing all of it took 250-290 ms after every tap.
    Keys of the Tab5 Keyboard (l5_cfg_key): Up / Down, Home / End move the ring over the rows of the three columns,
-   Enter = a tap on the row, Left / Right = - / + on the stepper rows, the previous / next UI color. */
+   Enter = a tap on the row, Left / Right = - / + on the stepper rows, the previous / next UI color or theme. */
 #include <stdio.h>
 #include <string.h>
 #include "esp_app_desc.h"
@@ -26,6 +26,7 @@ static const uint16_t DIMS[] = {0, 10, 20, 30, 60, 120, 300}; /* L5.DIMS */
 static const uint16_t OFFS[] = {0, 60, 120, 300, 600, 1800}; /* L5.OFFS */
 #define NOFFS (sizeof(OFFS) / sizeof(OFFS[0]))
 #define MAX_SWATCH 16
+#define CFG_COL_W ((L5_FULL_W - 2 * 13) / 3) /* three columns: 372 px since the rail (410 under the top bar) */
 
 static lv_obj_t *s_wifi_sub; /* "Wi-Fi networks" subtitle, follows the Wi-Fi status */
 
@@ -35,6 +36,8 @@ static struct {
     lv_obj_t *ask_title, *bins_title;     /* row titles that name the state */
     lv_obj_t *ask, *bins, *wifi, *deep, *btn; /* toggles */
     lv_obj_t *swatch[MAX_SWATCH];
+    lv_obj_t *theme[L5_THEME_COUNT]; /* the previews of Graphite, Midnight, Daylight */
+    lv_obj_t *theme_sub;             /* the Theme row's subtitle: the theme's name */
 } W;
 
 /* every row in column order, for the keyboard; empty while CFG is not built */
@@ -45,6 +48,7 @@ static struct {
     const char *dec[MAX_KROWS]; /* Left / Right on a stepper row */
     const char *inc[MAX_KROWS];
     bool color[MAX_KROWS];      /* the UI color row: Left / Right pick the previous / next swatch */
+    bool theme[MAX_KROWS];      /* the Theme row: Left / Right the previous / next theme */
     int n;
 } K;
 static int s_focus = -1; /* the row with the ring; kept while CFG is rebuilt, -1 = none yet */
@@ -132,10 +136,18 @@ static void save(void)
     l5_cfg_save();
 }
 
+/* config.conf's theme as an index; an unknown id is Graphite */
+static int cfg_theme(void)
+{
+    const int t = l5_theme_find(g_cfg.theme);
+    return t < 0 ? L5_THEME_GRAPHITE : t;
+}
+
 static void apply_look(void) /* L5.applyLook */
 {
     l5_theme_set_accent(l5_config_accent_hex(&g_cfg));
-    l5_topbar_apply_accent();
+    l5_rail_apply_accent();
+    if (cfg_theme() != l5_theme_current()) l5_ui_retheme(cfg_theme()); /* Reset config, config.conf replaced */
     l5_board_set_rotation(g_cfg.rot);
     l5_board_backlight(g_cfg.bright);
 }
@@ -192,6 +204,12 @@ void l5_cfg_paint(void)
     for (int i = 0; i < l5_color_count && i < MAX_SWATCH; i++) {
         if (W.swatch[i]) lv_obj_set_state(W.swatch[i], LV_STATE_CHECKED, !strcmp(g_cfg.color, l5_colors[i].id));
     }
+    for (int i = 0; i < L5_THEME_COUNT; i++) {
+        if (!W.theme[i]) continue;
+        lv_obj_set_state(W.theme[i], LV_STATE_CHECKED, i == cfg_theme());
+        lv_obj_set_style_bg_color(lv_obj_get_child(lv_obj_get_child(W.theme[i], 1), 0), L5P.accent, 0); /* UI color */
+    }
+    set_text(W.theme_sub, l5_themes[cfg_theme()].label);
 }
 
 static void widgets_deleted_cb(lv_event_t *e)
@@ -409,14 +427,28 @@ static void color_cb(lv_event_t *e)
     set_color((int)(intptr_t)lv_event_get_user_data(e));
 }
 
+/* CFG > Theme: saved, then every colour of the launcher changes at once (CFG itself is rebuilt after this event) */
+static void set_theme(int i)
+{
+    if (i < 0 || i >= L5_THEME_COUNT || i == cfg_theme()) return;
+    strlcpy(g_cfg.theme, l5_themes[i].id, sizeof(g_cfg.theme));
+    save();
+    l5_ui_retheme(i);
+}
+
+static void theme_cb(lv_event_t *e)
+{
+    set_theme((int)(intptr_t)lv_event_get_user_data(e));
+}
+
 /* ---------- building blocks (.crow, .tgl, .step, .swatches) ---------- */
 
 static lv_obj_t *column(lv_obj_t *view, int i, const char *title)
 {
     lv_obj_t *c = l5_box(view);
     l5_panel(c, true);
-    lv_obj_set_pos(c, 12 + i * 423, L5_PANEL_Y);
-    lv_obj_set_size(c, 410, L5_PANEL_H);
+    lv_obj_set_pos(c, L5_GAP + i * (CFG_COL_W + 13), L5_PANEL_Y); /* 13 px between the columns */
+    lv_obj_set_size(c, CFG_COL_W, L5_PANEL_H);
     lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
     l5_chamfer(c, L5_CHAMFER, L5_PLATE);
     l5_col_header(c, title, "");
@@ -474,14 +506,14 @@ static lv_obj_t *toggle(lv_obj_t *row)
     lv_obj_set_size(t, 64, 34);
     lv_obj_set_style_radius(t, 17, 0);
     lv_obj_set_style_bg_opa(t, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(t, lv_color_hex(0x3a3d43), 0);
+    lv_obj_set_style_bg_color(t, L5C.edge, 0);
     lv_obj_add_style(t, &L5S.tgl_on, LV_STATE_CHECKED); /* accent: follows an accent change */
     lv_obj_t *k = l5_box(t);
     lv_obj_set_size(k, 26, 26);
     lv_obj_set_pos(k, 4, 4);
     lv_obj_set_style_radius(k, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_opa(k, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(k, lv_color_hex(0xd9dbdf), 0);
+    lv_obj_set_style_bg_color(k, L5C.knob, 0);
     lv_obj_set_style_bg_color(k, L5_WHITE, LV_STATE_CHECKED);
     lv_obj_set_style_translate_x(k, 30, LV_STATE_CHECKED);
     return t;
@@ -561,6 +593,50 @@ static void swatches(lv_obj_t *row)
     }
 }
 
+/* one preview per theme: its plate, a strip of its rail on the left, one of its panels */
+static void themes(lv_obj_t *row)
+{
+    if (K.n && K.row[K.n - 1] == row) K.theme[K.n - 1] = true;
+    lv_obj_t *w = l5_box(row);
+    lv_obj_set_size(w, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_column(w, 8, 0);
+    lv_obj_set_flex_flow(w, LV_FLEX_FLOW_ROW);
+    for (int i = 0; i < L5_THEME_COUNT; i++) {
+        const l5_colors_t *c = l5_theme_colors(i);
+        lv_obj_t *b = lv_button_create(w);
+        lv_obj_remove_style_all(b);
+        lv_obj_set_size(b, 56, 44);
+        lv_obj_set_style_radius(b, 4, 0);
+        lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(b, c->plate, 0);
+        lv_obj_set_style_border_width(b, 2, 0);
+        lv_obj_set_style_border_color(b, L5_BLACK, 0);
+        lv_obj_set_style_border_opa(b, 102, 0);
+        lv_obj_add_style(b, &L5S.swatch_sel, LV_STATE_CHECKED);
+        lv_obj_add_style(b, &L5S.press_ring, LV_STATE_PRESSED);
+        lv_obj_add_event_cb(b, theme_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_t *rail = l5_box(b);
+        lv_obj_set_pos(rail, 2, 2);
+        lv_obj_set_size(rail, 10, 36);
+        lv_obj_set_style_bg_opa(rail, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(rail, c->rail, 0);
+        lv_obj_t *panel = l5_box(b);
+        lv_obj_set_pos(panel, 17, 7);
+        lv_obj_set_size(panel, 30, 26);
+        lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(panel, c->panel_2, 0);
+        lv_obj_set_style_border_width(panel, 1, 0);
+        lv_obj_set_style_border_color(panel, c->panel_edge, 0);
+        lv_obj_t *dot = l5_box(panel); /* the accent, as on the real panels */
+        lv_obj_set_size(dot, 6, 6);
+        lv_obj_set_pos(dot, 3, 3);
+        lv_obj_set_style_radius(dot, 3, 0);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(dot, L5P.accent, 0);
+        W.theme[i] = b;
+    }
+}
+
 static void wifi_sub_deleted_cb(lv_event_t *e)
 {
     (void)e;
@@ -599,6 +675,10 @@ bool l5_cfg_key(const l5_key_t *k)
             step(k->kind == L5_KEY_RIGHT ? K.inc[f] : K.dec[f]);
             return true;
         }
+        if (K.theme[f]) {
+            set_theme((cfg_theme() + (k->kind == L5_KEY_RIGHT ? 1 : L5_THEME_COUNT - 1)) % L5_THEME_COUNT);
+            return true;
+        }
         if (!K.color[f]) return false;
         {
             int i = 0;
@@ -628,6 +708,9 @@ void l5_cfg_render(lv_obj_t *view)
     lv_obj_t *c = crow(d, NULL, "UI color", "Accent of the whole Launcher", false);
     lv_obj_set_style_min_height(c, 104, 0);
     swatches(c);
+    lv_obj_t *th = crow(d, NULL, "Theme", l5_themes[cfg_theme()].label, false);
+    W.theme_sub = lv_obj_get_child(lv_obj_get_child(th, 0), 1);
+    themes(th);
     W.rot = value(crow(d, "rot", "Rotation", "Landscape / landscape inverted", false));
     W.boot = stepper(crow(d, NULL, "Bootscreen time", "Wait before the app starts", false), "boot-", "boot+");
     chev(crow(d, "charge", "Charge Mode", "Screen off, shows battery", false));

@@ -9,7 +9,7 @@
 static const char *const TRACE_VIEW[L5_VIEW_COUNT] = {"HOME", "SD", "OTA", "PMAN", "CFG"};
 #endif
 
-/* .screen > .topbar + .views, then #layer (z20), #sys (z30), toasts (z40), #veil (z50) */
+/* .screen > .views + the rail (l5_rail.c), then #layer (z20), #sys (z30), toasts (z40), #veil (z50) */
 static lv_obj_t *s_views[L5_VIEW_COUNT];
 static lv_obj_t *s_layer, *s_sys, *s_toasts, *s_veil, *s_bar;
 static l5_view_t s_view = L5_VIEW_HOME;
@@ -126,11 +126,11 @@ void l5_ui_init(void)
 
     for (int i = 0; i < L5_VIEW_COUNT; i++) {
         s_views[i] = l5_box(scr);
-        lv_obj_set_pos(s_views[i], 0, L5_TOPBAR_H);
-        lv_obj_set_size(s_views[i], L5_SCREEN_W, L5_VIEW_H);
+        lv_obj_set_pos(s_views[i], L5_RAIL_W, 0);
+        lv_obj_set_size(s_views[i], L5_VIEW_W, L5_VIEW_H);
         lv_obj_add_flag(s_views[i], LV_OBJ_FLAG_HIDDEN);
     }
-    l5_topbar_create(scr);
+    l5_rail_create(scr);
     s_bar = lv_obj_get_child(scr, -1);
 
     s_layer = overlay();
@@ -272,7 +272,7 @@ static void go(l5_view_t view, bool tap, bool render)
         lv_obj_add_flag(s_views[view], LV_OBJ_FLAG_HIDDEN);
         build(view);
     }
-    l5_topbar_select(view);
+    l5_rail_select(view);
     for (int i = 0; i < L5_VIEW_COUNT; i++) {
         if (i == (int)view) {
             lv_obj_remove_flag(s_views[i], LV_OBJ_FLAG_HIDDEN);
@@ -303,7 +303,24 @@ void l5_ui_prepare(l5_view_t view)
 
 /* LVGL draws the active screen under the top layer even when an opaque system screen covers all of it: the
    bootscreen's first frame drew the whole HOME view and the top bar underneath (378 ms of the boot). While one is
-   up, the view and the top bar are hidden. */
+   up, the view and the rail are hidden. */
+/* After the current event (CFG's theme preview is inside its own click): styles, rail and the visible view change
+   in one go, so no frame shows the new rail next to the old view. */
+static void retheme_cb(void *arg)
+{
+    l5_theme_set((int)(intptr_t)arg);
+    lv_obj_t *scr = lv_screen_active();
+    lv_obj_set_style_bg_color(scr, L5_PLATE, 0);
+    lv_obj_set_style_text_color(scr, L5_INK, 0);
+    l5_rail_rebuild();
+    l5_ui_render_views(L5_VIEWS_ALL);
+}
+
+void l5_ui_retheme(int theme)
+{
+    lv_async_call(retheme_cb, (void *)(intptr_t)theme);
+}
+
 void l5_ui_covered(bool covered)
 {
     lv_obj_set_flag(s_bar, LV_OBJ_FLAG_HIDDEN, covered);

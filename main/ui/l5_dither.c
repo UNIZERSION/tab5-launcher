@@ -59,6 +59,14 @@ void l5_dither_set_enabled(bool on)
     s_off = !on;
 }
 
+void l5_dither_forget(void)
+{
+    for (int i = 0; i < s_strip_n; i++) heap_caps_free((void *)s_strips[i].img.data);
+    s_strip_n = 0;
+    s_bytes = 0;
+    s_key_n = 0;
+}
+
 static void refr_start_cb(lv_event_t *e)
 {
     (void)e;

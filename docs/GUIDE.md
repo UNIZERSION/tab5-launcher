@@ -61,10 +61,15 @@ If you build from source (ESP-IDF 5.5.2), flash the launcher with `idf.py -p COM
 
 ## Boot screen and buttons
 
-After power-on and after RESET, the launcher always starts first. On the boot screen it counts down a few seconds (Bootscreen time, 1–5 s) and then starts the selected app on its own.
+After power-on and after RESET, the launcher always starts first. The boot screen shows the app that starts next: its initials on an accent tile inside a ring that empties as the countdown runs (Bootscreen time, 1–5 s), its name, and the seconds left. Then the app starts on its own.
 
-- **ENTER LAUNCHER** stops the countdown and opens the launcher.
-- **FAST BOOT APP** starts the app right away.
+![Boot screen with the countdown ring](images/boot.png)
+
+- **LAUNCHER** opens the launcher.
+- **START NOW** starts the app right away.
+- **A tap anywhere else** stops the countdown (the ring turns gray), so you can choose in peace.
+- **Other apps:** the other installed apps are chips at the bottom (up to four). A tap starts that app now and makes it the one that starts after the boot screen.
+- Any key of the Tab5 Keyboard opens the launcher.
 - With no app installed, the launcher opens on its own after about 1.5 s.
 - With "Only with button" (CFG) turned on, the launcher opens only if you are touching the screen at startup. Otherwise the app starts right away.
 
@@ -78,9 +83,9 @@ After power-on and after RESET, the launcher always starts first. On the boot sc
 
 The RESET button on the side of the Tab5 is the quickest way to get back to the launcher from any app.
 
-## Top bar
+## Side menu
 
-The top bar (72 px) is always visible and takes you to every part of the launcher. The tabs sit in a recessed groove: the active one is raised, and a glowing strip under it shows where you are. Taps register across the full height of the bar above the strip, even right next to a button, and for Wi-Fi and power also a few pixels around the icon.
+The menu down the left edge (112 px) is always visible and takes you to every part of the launcher (until 26.10.2026 it was a bar at the top). At the top is the TAB5 logo and the version, below it the tabs, at the bottom the clock, the battery, Wi-Fi and power. The active tab has an accent tint, an accent bar on its left edge and accent text. Each tab is 112 × 88 px and the tabs touch, so every tap on the middle of the menu hits a tab.
 
 - **Tabs:** HOME, SD, OTA, PMAN, CFG. Tapping the active tab refreshes it, e.g. SD reads the card again.
 - **Wi-Fi icon:** crossed out when Wi-Fi is off, gray while connecting, in the accent color once connected. Tapping it opens the Wi-Fi menu: scanning and connecting, disconnecting, saved networks.
@@ -95,24 +100,18 @@ The top bar (72 px) is always visible and takes you to every part of the launche
 
 HOME shows the "APPS IN FLASH" panel with the apps installed in flash. What it looks like depends on the number of slots in the partition scheme (one 8 MB slot by default). The scheme name appears in the panel header. A layout that is not one of the ready-made schemes, e.g. after AUTO PARTITION, is called "Custom".
 
-**One slot** (Default and other single-slot schemes)
+Every slot is a card in a carousel (since 26.10.2026). The card in the middle is bright; the cards beside it are darker and partly visible.
 
-- One wide card across the whole panel: on the left, a 420 px image generated from the app name; on the right, the name, author, and version.
-- Below them are four fields: SOURCE (SD or OTA), INSTALLED (install date), SIZE, and FREE IN SLOT, with the SLOT USE bar further down.
-- **BOOT ‹name›** starts the app right away. **ERASE** removes it from the slot after you confirm; the file on the SD card stays.
-- An app the launcher did not install itself (e.g. flashed over USB) does not start by itself until you choose it: the card has no BOOTS badge and says "NOT STARTED BY ITSELF UNTIL YOU BOOT IT", and the boot screen says "NO APP CHOSEN TO START". BOOT starts it and makes it the boot app.
-- An empty slot also says what each way of installing needs: the SD card works without Wi-Fi, OTA needs Wi-Fi (the ESP32-C6 with ESP-Hosted 2.12.x).
-- An empty slot has an "Empty slot" card with **FROM SD CARD** and **FROM OTA** buttons, which open those tabs.
+![HOME with four app slots](images/home-four-slots.png)
 
-**Several slots** (2 Apps, 4 Apps, Custom)
-
-![HOME with two app slots](images/home-two-slots.png)
-
-- A card for each slot: image, name, version, source and install date, and slot usage. An empty slot has an "Empty slot" card.
-- **Tapping a card** selects the app that will start after the boot screen. The selected one has a **BOOTS** badge.
-- The **BOOT button** in the footer starts the selected app right away.
-- **Card menu (⋮):** Boot now (start it now), Boot this app after the bootscreen (make it the boot app), and Erase appN (remove it from flash; the file on the card stays).
-- With apps in flash but none chosen (they were not installed by the launcher), the footer says "NO APP CHOSEN TO START · Tap an app to choose it", and nothing starts after the boot screen.
+- **Swipe** left or right, tap a card at the side, or tap a dot under the cards to bring another card to the middle.
+- A card shows an image generated from the app name, the name, the project and version, where it came from (SD, OTA or FLASH) with the install date, and how much of the slot it uses.
+- **Tapping the card in the middle** makes it the app that starts after the boot screen. That card has an accent frame and a **BOOTS** badge.
+- The footer describes the card in the middle. **BOOT ‹name›** starts it right away and makes it the boot app.
+- **Card menu (⋮)** on the card in the middle: Boot now, Boot this app after the bootscreen, and Erase appN (remove it from flash after you confirm; the file on the SD card stays).
+- An empty slot has an "Empty slot" card with **FROM SD** and **FROM OTA** buttons, which open those tabs. Without a card in the reader it says why FROM SD will not work.
+- An app the launcher did not install itself (e.g. flashed over USB) does not start by itself until you choose it: no card has the BOOTS badge, and the boot screen says "NO APP CHOSEN TO START". BOOT starts it and makes it the boot app.
+- Tab5 Keyboard: Left / Right (or Up / Down) make the previous / next app the boot app and bring it to the middle, Enter = BOOT.
 
 ## SD: card manager
 
@@ -249,6 +248,7 @@ CFG has three columns: DISPLAY, INSTALL & STORAGE and SYSTEM. Changes take effec
 | Dim time | dims the screen after inactivity: OFF, 10, 20, 30, 60, 120 or 300 s | 30 s |
 | Screen off | turns the backlight off completely after inactivity: OFF, 1, 2, 5, 10 or 30 min; the first touch only wakes the screen | 2 min |
 | UI color | the accent color of the whole launcher: red, orange, amber, green, cyan, blue, violet, magenta | red |
+| Theme | the colors of the whole launcher, applied at once without a restart: **Graphite** (light frame, black panels), **Midnight** (dark everywhere), **Daylight** (light panels, dark text). Saved as `"theme"` in `config.conf` | Graphite |
 | Rotation | a tap toggles between 0° and 180° (screen upside down) | 0° |
 | Bootscreen time | the countdown on the boot screen, 1–5 s | 3 s |
 | Charge Mode | the actual battery level and charging state (CHARGING, FULL, ON BATTERY or USB · NOT CHARGING); a tap returns to the launcher | — |
@@ -283,7 +283,7 @@ Wi-Fi runs on the built-in ESP32-C6 chip and sees only 2.4 GHz networks. The lau
 
 **Connecting to a network**
 
-1. Tap the Wi-Fi icon in the top bar (or CFG → Wi-Fi networks) and choose **Scan and connect**.
+1. Tap the Wi-Fi icon at the bottom of the side menu (or CFG → Wi-Fi networks) and choose **Scan and connect**.
 2. After the "Starting the ESP32-C6" dialog and the scan, the "Select a network" list appears: "SSID · -46 dBm · WPA2 · saved", strongest networks first, up to 16 entries. A padlock marks a network with a password. Hidden networks are not shown.
 3. For a new network with a password, the "PASSWORD · SSID" keyboard opens. A WPA password must be at least 8 characters long.
 4. You see the "Connecting to SSID" dialog ("Associating", "Waiting for DHCP"), then the message "Connected to SSID" with the IP address. If it fails: "Wrong password", "Network not found", "No IP address" (20 s without DHCP) or "Could not connect".
@@ -322,11 +322,11 @@ With the M5Stack Tab5 Keyboard plugged into the side port, the whole launcher wo
 | Where | Keys |
 |---|---|
 | Everywhere | **Tab** / **Shift+Tab** or **Ctrl+→** / **Ctrl+←**: next / previous tab (PMAN works only by touch). On a dimmed or dark screen the first key only wakes it, like the first tap. |
-| Boot screen | any key = ENTER LAUNCHER |
+| Boot screen | any key = LAUNCHER |
 | HOME | one app: **Enter** = BOOT (on the empty card: the SD tab). Several apps: **← ↑** / **→ ↓** choose the previous / next installed app as the one that starts after the boot screen, **Enter** = BOOT |
 | SD | **↑ ↓**, **Home / End**, **PgUp / PgDn** (8 rows) select. **Enter**: a folder opens, a .bin that the side panel offers to install = INSTALL, a text file = VIEW. **Esc** or **Backspace** = UP, **Delete** = DELETE, **Ctrl+C** COPY, **Ctrl+V** PASTE, **Ctrl+R** RENAME, **Ctrl+N** NEW FOLDER |
 | OTA | **↑ ↓**, **Home / End**, **PgUp / PgDn** (6 rows) select, **Enter** = INSTALL, **/** or **Ctrl+F** = search. Without Wi-Fi: **Enter** = CONNECT (after a Wi-Fi failure WHY NO WI-FI; nothing while it connects) |
-| CFG | **↑ ↓**, **Home / End** move the frame over the rows of the three columns. **Enter** = a tap on the row. **← →** = − / + on the rows with steps, previous / next UI color |
+| CFG | **↑ ↓**, **Home / End** move the frame over the rows of the three columns. **Enter** = a tap on the row. **← →** = − / + on the rows with steps, previous / next UI color or theme |
 | Menus | **↑ ↓**, **Tab / Shift+Tab**, **Home / End** move the frame, **Enter** picks, **Esc** closes |
 | Dialogs with buttons | **← →** or **Tab / Shift+Tab** move the frame over the buttons. **Enter** = the framed button, without a frame the main (right) one; a greyed-out button does nothing. **Esc** = the cancel button, if the dialog has one. **↑ ↓ PgUp PgDn Home End** scroll a long text |
 | Progress | **Esc** = CANCEL |
@@ -418,7 +418,7 @@ No known bugs so far.
 
 **Not yet tested on the device**
 
-These features are in the launcher but have not been tested on the Tab5 yet: resuming an OTA download after the connection drops (including RETRY), CANCEL during a download, \[UPDATE ALL\], favorites and ADD LINK, the APP ONLY / APP + DATA choice and Avoid SPIFFS. In the SD tab: copy and paste, rename, new folder and text preview. In the boot-loop guard: BOOT AGAIN and RESET while the "… was stopped" dialog is open. Restored from the build of 2026-10-20 and not tested on the device yet: the M5Stack Tab5 Keyboard and its keys in the whole launcher, the dithered (band-free) gradients of the panels, buttons and top bar, putting config.conf back, WHY NO WI-FI, the NO DISPLAY stop, apps that wait until they are chosen, installing with little internal RAM.
+These features are in the launcher but have not been tested on the Tab5 yet: resuming an OTA download after the connection drops (including RETRY), CANCEL during a download, \[UPDATE ALL\], favorites and ADD LINK, the APP ONLY / APP + DATA choice and Avoid SPIFFS. In the SD tab: copy and paste, rename, new folder and text preview. In the boot-loop guard: BOOT AGAIN and RESET while the "… was stopped" dialog is open. Restored from the build of 2026-10-20 and not tested on the device yet: the M5Stack Tab5 Keyboard and its keys in the whole launcher, the dithered (band-free) gradients of the panels and buttons, putting config.conf back, WHY NO WI-FI, the NO DISPLAY stop, apps that wait until they are chosen, installing with little internal RAM. New on 2026-10-26 and not tested on the device yet: the boot screen with the countdown ring and the other apps' chips, the side menu, and the HOME carousel (swiping on the Tab5's touch panel, its drawing speed).
 
 **What comes next**
 
