@@ -647,8 +647,15 @@ void l5_layout_text(const l5_layout_t *l, char *out, size_t len)
     char s[16];
     size_t o;
     l5_fw_size(s, sizeof(s), (uint64_t)l->slot_kb * 1024);
-    if (l->n == 1) o = snprintf(out, len, "app0 %s", s);
-    else o = snprintf(out, len, "%lu x app %s", (unsigned long)l->n, s);
+    if (l->n == 1) {
+        o = snprintf(out, len, "app0 %s", s);
+    } else if (l->app0_kb) { /* app0 of its own size before the others */
+        char a[16];
+        l5_fw_size(a, sizeof(a), (uint64_t)l->app0_kb * 1024);
+        o = snprintf(out, len, "app0 %s + %lu x app %s", a, (unsigned long)(l->n - 1), s);
+    } else {
+        o = snprintf(out, len, "%lu x app %s", (unsigned long)l->n, s);
+    }
     for (uint32_t i = 0; i < l->nextra && o < len; i++) {
         l5_fw_size(s, sizeof(s), (uint64_t)l->extra[i].kb * 1024);
         o += snprintf(out + o, len - o, " \xC2\xB7 %s %s %s", l->extra[i].label, l5_fw_subtype_name(l->extra[i].subtype), s);

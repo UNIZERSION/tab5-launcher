@@ -323,12 +323,14 @@ static void pick_slot(void)
     l5_menu_item_t items[L5_MAX_SLOTS];
     static char ids[L5_MAX_SLOTS][4], labels[L5_MAX_SLOTS][96];
     char kb[16], title[96];
-    l5_fmt_kb(kb, sizeof(kb), g_slots.slot_kb);
     int k = 0;
     for (int pass = 0; pass < 2; pass++) {
         for (int i = 0; i < g_slots.n && i < L5_MAX_SLOTS; i++) {
             const l5_slot_t *s = &g_slots.slot[i];
             if (s->used != (pass == 1)) continue;
+            /* slots of different sizes ("1 Big + 2 Small"): only the ones the app fits */
+            if (F.rep.app_known && F.rep.app_need > (uint64_t)l5_slots_kb(i) * 1024) continue;
+            l5_fmt_kb(kb, sizeof(kb), l5_slots_kb(i));
             snprintf(ids[k], sizeof(ids[k]), "%d", i);
             if (s->used) snprintf(labels[k], sizeof(labels[k]), "APP%d \xC2\xB7 %sB \xC2\xB7 replace %s", i, kb, s->name);
             else snprintf(labels[k], sizeof(labels[k]), "APP%d \xC2\xB7 %sB \xC2\xB7 empty", i, kb);
@@ -356,8 +358,8 @@ static void too_big(void)
     char need[16], slot[16], ok[32];
     const char *best = l5_slots_best_scheme(F.rep.app_need);
     l5_fmt_bytes(need, sizeof(need), F.rep.app_need);
-    l5_fmt_kb(slot, sizeof(slot), g_slots.slot_kb);
-    snprintf(s_body, sizeof(s_body), "%s needs %s, one app slot has %sB in the %s scheme.%s%s%s", F.name, need, slot,
+    l5_fmt_kb(slot, sizeof(slot), l5_slots_max_kb());
+    snprintf(s_body, sizeof(s_body), "%s needs %s, the largest app slot has %sB in the %s scheme.%s%s%s", F.name, need, slot,
              g_slots.scheme, best ? " The " : " No scheme on 16 MB flash fits this binary.", best ? best : "",
              best ? " scheme fits it." : "");
     flow_end();
@@ -472,7 +474,7 @@ void l5_install_fw(l5_fw_t *fw, const char *name, const char *author, const char
         flow_end();
         return;
     }
-    l5_fw_check(fw, &F.map->table, g_slots.slot_kb * 1024, &F.rep);
+    l5_fw_check(fw, &F.map->table, l5_slots_max_kb() * 1024, &F.rep); /* fits a slot: pick_slot offers only those */
     ESP_LOGI(TAG, "%s: app %lu B (%s), %d data partition(s), %d problem(s), %d image(s) not writable", F.name,
              (unsigned long)F.rep.app_need, F.rep.app_known ? "known" : "bound", fw->nparts, F.rep.problems, F.rep.lost);
     if (!fw->nparts) { /* only an app is known: classic slot check */

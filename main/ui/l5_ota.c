@@ -1317,7 +1317,7 @@ static void build_side(void)
             const l5_fw_t *fw = O.man;
             if (fw->app_size) {
                 l5_fmt_bytes(a, sizeof(a), fw->app_size);
-                bool fits = !g_slots.n || (uint64_t)fw->app_size <= (uint64_t)g_slots.slot_kb * 1024;
+                bool fits = !g_slots.n || (uint64_t)fw->app_size <= (uint64_t)l5_slots_max_kb() * 1024; /* the largest slot */
                 snprintf(t, sizeof(t), "%s%s", a, fits ? "" : " \xC2\xB7 larger than an app slot");
                 l5w_kv(g, "APP", t, !fits);
             }

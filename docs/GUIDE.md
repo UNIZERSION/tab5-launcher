@@ -204,9 +204,12 @@ PMAN shows how the flash (16 MB) is divided and lets you change that layout. Cha
 | UiFlow2 | 1 × 7552 KB | 5760 KB |
 | Doom | 1 × 4 MB | 9 MB |
 | Max App | 1 × 12864 KB | 448 KB |
+| 1 Big + 2 Small | app0 7552 KB + 2 × 2560 KB | 640 KB |
 | Custom | 1–4 slots of a size you choose | the remaining space or none |
 
-Every scheme also has an 872 KB SPIFFS (optional in Custom) and the `aurora_cfg` partition. Aurora Player 1.3.21 (6.3 MB) and the UIFlow2 2.5 app (7.4 MB) fit in Default.
+Every scheme also has an 872 KB SPIFFS (optional in Custom) and the `aurora_cfg` partition. Aurora Player 1.3.21 (6.3 MB) and the UIFlow2 2.5 app (7.4 MB) fit in Default. **1 Big + 2 Small** (since 26.10.2026) has slots of two sizes: one big app (up to the UIFlow2 size, e.g. ORBIT DRUM) in app0 next to two small ones (e.g. PSTX1 Serwis, Spotify) in app1 and app2. HOME shows the size of every slot, the SD tab says "fits app0 only" for a file that fits only the big slot, and an install offers only the slots the app fits.
+
+![HOME with 1 Big + 2 Small](images/home-big-small.png)
 
 **Changing the scheme**
 
@@ -219,13 +222,13 @@ Every scheme also has an 872 KB SPIFFS (optional in Custom) and the `aurora_cfg`
 
 - **AUTO PARTITION**: you pick a `.bin` file from the card, and the launcher fits the layout to it. For an app-only file, it makes a slot of the app's size (with 256 KB of headroom); for a merged image, it uses the layout from the image's own partition table. It erases the installed apps. The same button in the check dialog during an install (SD and OTA) changes the layout and installs the app right away.
 - **SANITY CHECK**: checks the selected `.bin` file from the card the way the bootloader does: the header, segments, checksum, SHA-256, the target chip (ESP32-P4) and whether it fits in the slot. For a merged image, it checks the app inside it. It writes nothing.
-- **OPTIMIZE FLASH**: shrinks the slots to the size of the largest installed app (with 10% headroom) and gives the rest to FAT. Apps cannot be moved, so they are erased, and you have to install them again afterwards.
+- **OPTIMIZE FLASH**: shrinks the slots to the size of the largest installed app (with 10% headroom) and gives the rest to FAT. With app0 of its own size (1 Big + 2 Small), app0 shrinks to its app and the other slots to the largest of theirs. Apps cannot be moved, so they are erased, and you have to install them again afterwards.
 
 **Selected partition**
 
 - nvs, otadata, launcher, `aurora_cfg` and coredump are marked "SYSTEM · LOCKED": all buttons are disabled.
 - **FORMAT** erases the partition. For a slot, this means removing the app. For a data partition, the app that uses it formats it in its own way the next time it starts.
-- **RESIZE** changes the size of all slots at once (erasing all apps) or of the main FAT. Partitions added by AUTO PARTITION have a fixed size ("Fixed size").
+- **RESIZE** changes the size of all slots at once (erasing all apps) or of the main FAT. With app0 of its own size, RESIZE on app0 changes only app0, and on app1..appN those slots together. Partitions added by AUTO PARTITION have a fixed size ("Fixed size").
 - **BACKUP** saves a raw copy of a data partition (SPIFFS, FAT) to `/sdcard/backups/<label>_<date>.bin`. **RESTORE** overwrites the partition with a copy you pick from that folder.
 - **DELETE** removes a data partition, and its space becomes free.
 - **CREATE PARTITION** creates, in free space, a FAT partition (before `aurora_cfg`) or an 872 KB SPIFFS (after it).

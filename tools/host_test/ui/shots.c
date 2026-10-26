@@ -255,6 +255,26 @@ static void home_shots(void)
     lv_obj_send_event(lv_obj_get_child(strip, 3), LV_EVENT_CLICKED, NULL);
     settle(800);
     shot("27_home_empty_slot_in_the_middle");
+    /* "1 Big + 2 Small": ORBIT DRUM in the big app0, PSTX1 and Spotify in the small ones */
+    g_slots.n = 3;
+    g_slots.app0_kb = 7552;
+    g_slots.slot_kb = 2560;
+    g_slots.scheme = "1 Big + 2 Small";
+    g_slots.boot = 0;
+    slot_set(0, "ORBIT DRUM", "orbit_drum", "0.4.9", "SD", "2026-10-26", "Oct 26 2026", 4875632);
+    slot_set(1, "PSTX1_Serwis_1.1.1", "pstx1_serwis", "1.1.1", "SD", "2026-10-22", "Oct 22 2026", 2010000);
+    slot_set(2, "Spotify", "tab5_spotify", "0.4.8", "SD", "2026-10-23", "Oct 23 2026", 2343024);
+    slot_set(3, NULL, NULL, NULL, NULL, NULL, NULL, 0);
+    l5_ui_go(L5_VIEW_HOME);
+    shot("28_home_big_small");
+    strip = lv_obj_get_child(lv_obj_get_child(lv_obj_get_child(lv_screen_active(), L5_VIEW_HOME), 0), 1);
+    lv_obj_send_event(lv_obj_get_child(strip, 1), LV_EVENT_CLICKED, NULL);
+    settle(800);
+    shot("29_home_big_small_second");
+    l5_pman_pick_scheme(); /* the scheme list, "1 Big + 2 Small" at its end */
+    shot("29b_pman_schemes");
+    close_all();
+    g_slots.app0_kb = 0;
 
     /* the other tabs with the device's slot (Custom, 11264 KB, Aurora) */
     g_slots.n = 1;
@@ -307,6 +327,7 @@ static void boot_slots(int n)
 {
     g_slots.n = n;
     g_slots.slot_kb = n == 1 ? 7552 : 3072;
+    g_slots.app0_kb = 0;
     g_slots.scheme = n == 1 ? "UiFlow2" : "Custom";
     g_slots.boot = 0;
     for (int i = 0; i < 4; i++) slot_set(i, NULL, NULL, NULL, NULL, NULL, NULL, 0);

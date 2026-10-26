@@ -1142,8 +1142,8 @@ int main(int argc, char **argv)
     for (int i = 0; i < l5_scheme_count; i++) {
         l5_layout_t l = l5_layout_of_scheme(&l5_schemes[i]);
         CHECK(l5_layout_front_kb(&l) == L5_FRONT_KB, "%s does not fill the front", l5_schemes[i].id);
-        printf("scheme %-10s %lu x %5lu KB, vfs %5lu KB, spiffs %lu KB\n", l5_schemes[i].id, (unsigned long)l.n,
-               (unsigned long)l.slot_kb, (unsigned long)l.fat_kb, (unsigned long)l.spiffs_kb);
+        printf("scheme %-10s %lu x %5lu KB%s, vfs %5lu KB, spiffs %lu KB\n", l5_schemes[i].id, (unsigned long)l.n,
+               (unsigned long)l.slot_kb, l.app0_kb ? " (app0 bigger)" : "", (unsigned long)l.fat_kb, (unsigned long)l.spiffs_kb);
         if (strcmp(l5_schemes[i].id, "default") == 0) continue; /* that is the current Default table itself */
         run(l5_schemes[i].id, 0, l, true);
     }
@@ -1163,6 +1163,12 @@ int main(int argc, char **argv)
     run("small_slot", 0, (l5_layout_t){.n = 1, .slot_kb = 512, .spiffs_kb = L5_GAP_KB, .fat_kb = 448}, false);
     run("small_fat", 0, (l5_layout_t){.n = 2, .slot_kb = 4096, .fat_kb = 100}, false);
     run("nine_slots", 0, (l5_layout_t){.n = 9, .slot_kb = 1024}, false);
+    /* app0 of its own size (26.10.2026): smaller than the others is fine too; it needs a second slot, 64 KB steps, 1 MB */
+    run("app0_smaller", 0, (l5_layout_t){.n = 3, .app0_kb = 2048, .slot_kb = 4096, .spiffs_kb = L5_GAP_KB, .fat_kb = 3072}, true);
+    run("bigsmall_from_uiflow2", 1, scheme("bigsmall"), true);
+    run("app0_one_slot", 0, (l5_layout_t){.n = 1, .app0_kb = 4096, .slot_kb = 4096, .fat_kb = 4096}, false);
+    run("app0_odd", 0, (l5_layout_t){.n = 2, .app0_kb = 4000, .slot_kb = 4096, .fat_kb = 4096}, false);
+    run("app0_tiny", 0, (l5_layout_t){.n = 2, .app0_kb = 512, .slot_kb = 4096, .fat_kb = 4096}, false);
     {
         l5_layout_t x = scheme("default");
         x.nextra = 1;

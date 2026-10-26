@@ -861,6 +861,17 @@ APP ONLY / APP + DATA.
 Port of `renderPM` / `pmAction` (views2.js) and `L5.pickScheme` / `L5.applyScheme` (app.js),
 on the real partition table at 0x8000.
 
+**Slots of two sizes (26.10.2026).** `l5_layout_t.app0_kb` gives app0 its own size, app1..appN-1 share `slot_kb`
+(0: all equal, as before). `l5_scheme_def_t.app0_kb` does the same for a scheme: "1 Big + 2 Small" (`bigsmall`) =
+app0 7552 KB (ORBIT DRUM's limit, the UIFlow2 app) + 2 × 2560 KB (PSTX1 Serwis, Spotify) + FAT 640 KB + SPIFFS
+872 KB. Reading a table accepts any app0 size as long as ota_1.. are equal; building puts app0 first. Use
+`l5_layout_slot_kb / apps_kb / max_slot_kb` and, for the running table, `l5_slots_kb(i) / l5_slots_max_kb()`
+(`g_slots.app0_kb`); `g_slots.slot_kb` is the size of the slots after app0. Fit checks (SD, OTA, install check)
+use the largest slot, the install's slot menu lists only the slots the app fits. RESIZE on app0 changes app0
+alone, on app1.. those together; OPTIMIZE shrinks app0 and the others each to their own largest app; AUTO
+PARTITION and Custom still make equal slots. Host tests: `bigsmall` in the scheme loop, `app0_smaller`,
+`bigsmall_from_uiflow2`, and three layouts that must fail (one slot, odd size, under 1 MB).
+
 - Flash map (segments as in `.fmap`), a LABEL / TYPE / SUBTYPE / OFFSET / SIZE / USED table,
   a "(free)" row for the free space before `aurora_cfg` (room for FAT) and "(spiffs gap)" for
   the empty gap after it (room for SPIFFS). Selected-partition panel: SYSTEM · LOCKED for nvs,

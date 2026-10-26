@@ -338,13 +338,20 @@ static void bin_rows(lv_obj_t *g, const l5_bin_info_t *bi, bool merged, uint32_t
     }
     switch (bi->kind) {
     case L5_BIN_APP:
-        l5_fmt_kb(kb, sizeof(kb), g_slots.slot_kb);
+        /* app0 may have its own size (bigger or smaller than app1..): every slot, only the larger ones, none */
+        const uint32_t min_kb = g_slots.app0_kb && g_slots.app0_kb < g_slots.slot_kb ? g_slots.app0_kb : g_slots.slot_kb;
+        l5_fmt_kb(kb, sizeof(kb), min_kb);
         if (g_slots.n == 0) {
             l5w_kv(g, "APP SLOT", "no ota_N slot in flash", true);
-        } else if ((uint64_t)bi->size <= (uint64_t)g_slots.slot_kb * 1024) {
+        } else if ((uint64_t)bi->size <= (uint64_t)min_kb * 1024) {
             snprintf(t, sizeof(t), "fits (%sB)", kb);
             l5w_kv(g, "APP SLOT", t, false);
+        } else if ((uint64_t)bi->size <= (uint64_t)l5_slots_max_kb() * 1024) {
+            l5_fmt_kb(kb, sizeof(kb), l5_slots_max_kb());
+            snprintf(t, sizeof(t), g_slots.app0_kb > g_slots.slot_kb ? "fits app0 only (%sB)" : "fits app1.. only (%sB)", kb);
+            l5w_kv(g, "APP SLOT", t, false);
         } else {
+            l5_fmt_kb(kb, sizeof(kb), l5_slots_max_kb());
             snprintf(t, sizeof(t), "too big for %sB", kb);
             l5w_kv(g, "APP SLOT", t, true);
         }

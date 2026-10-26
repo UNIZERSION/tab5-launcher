@@ -94,7 +94,7 @@ static void erase_confirmed(bool ok, void *user)
     job->slot = i;
     char title[24], kb[16];
     snprintf(title, sizeof(title), "Erasing app%d", i);
-    l5_fmt_kb(kb, sizeof(kb), g_slots.slot_kb);
+    l5_fmt_kb(kb, sizeof(kb), l5_slots_kb(i));
     snprintf(job->label, sizeof(job->label), "Erasing %sB", kb);
     job->progress = l5_progress_open("FLASH SLOT", title);
     l5_progress_set(job->progress, 0, job->label);
@@ -353,11 +353,11 @@ static void used_card(lv_obj_t *card, int i)
     lv_obj_set_size(r, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(r, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    uint64_t slot_bytes = (uint64_t)g_slots.slot_kb * 1024;
+    uint64_t slot_bytes = (uint64_t)l5_slots_kb(i) * 1024; /* app0 may be bigger than the others */
     int pct = slot_bytes ? (int)((uint64_t)s->size * 100 / slot_bytes) : 0;
     char size[16], kb[16];
     l5_fmt_bytes(size, sizeof(size), s->size);
-    l5_fmt_kb(kb, sizeof(kb), g_slots.slot_kb);
+    l5_fmt_kb(kb, sizeof(kb), l5_slots_kb(i));
     snprintf(t, sizeof(t), "%s OF %sB", size, kb);
     l5_label(r, &l5_mono_13, L5_ON_PANEL_MUTED, t);
     snprintf(t, sizeof(t), "%d%%", pct);
@@ -396,7 +396,7 @@ static void empty_card(lv_obj_t *card, int i)
     lv_obj_t *b = l5_label(col, &l5_chakra_b28, L5_ON_PANEL, "Empty slot");
     lv_obj_set_style_pad_top(b, 6, 0);
     char kb[16], t[96];
-    l5_fmt_kb(kb, sizeof(kb), g_slots.slot_kb);
+    l5_fmt_kb(kb, sizeof(kb), l5_slots_kb(i));
     snprintf(t, sizeof(t), "%sB free for one firmware.\nInstall it from the SD card or OTA.", kb);
     lv_obj_t *meta = l5_label(col, &l5_mono_14, L5_ON_PANEL_MUTED, t);
     lv_obj_set_style_text_align(meta, LV_TEXT_ALIGN_CENTER, 0);
@@ -524,11 +524,17 @@ void l5_home_render(lv_obj_t *view)
     lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
     l5_chamfer(panel, L5_CHAMFER, L5_PLATE);
 
-    char kb[16], scheme[24], tag[112];
+    char kb[16], kb0[16], scheme[24], tag[128];
     l5_fmt_kb(kb, sizeof(kb), g_slots.slot_kb);
+    l5_fmt_kb(kb0, sizeof(kb0), g_slots.app0_kb);
     upper(scheme, g_slots.scheme, sizeof(scheme));
-    snprintf(tag, sizeof(tag), "%d SLOT%s \xC3\x97 %sB \xC2\xB7 %s SCHEME%s", n, n == 1 ? "" : "S", kb, scheme,
-             n > 1 ? " \xC2\xB7 SWIPE" : "");
+    if (g_slots.app0_kb) { /* "APP0 7.4MB + 2 x 2.5MB": app0 has its own size */
+        snprintf(tag, sizeof(tag), "APP0 %sB + %d \xC3\x97 %sB \xC2\xB7 %s SCHEME%s", kb0, n - 1, kb, scheme,
+                 n > 1 ? " \xC2\xB7 SWIPE" : "");
+    } else {
+        snprintf(tag, sizeof(tag), "%d SLOT%s \xC3\x97 %sB \xC2\xB7 %s SCHEME%s", n, n == 1 ? "" : "S", kb, scheme,
+                 n > 1 ? " \xC2\xB7 SWIPE" : "");
+    }
     l5_col_header(panel, "APPS IN FLASH", tag);
 
     if (n == 0) {

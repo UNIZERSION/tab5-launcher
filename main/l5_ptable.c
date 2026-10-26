@@ -35,10 +35,12 @@ static const char *TAG = "l5_ptable";
    slot (Aurora 6.2 MB and the UIFlow2 app fit without PMAN); UiFlow2 holds UIFlow2 2.5's 7,709,696 B
    app (its 7 MB slot no longer did). */
 const l5_scheme_def_t l5_schemes[] = {
-    {"default", "Default", 8192, 1, L5_GAP_KB, 5120},       {"multi2", "2 Apps", 8192, 2, L5_GAP_KB, 5120},
-    {"multi4", "4 Apps", 8192, 4, L5_GAP_KB, 5120},         {"minspiffs", "Min SPIFFS", 10240, 1, L5_GAP_KB, 3072},
-    {"uiflow2", "UiFlow2", 7552, 1, L5_GAP_KB, 5760},       {"doom", "Doom", 4096, 1, L5_GAP_KB, 9216},
-    {"maxapp", "Max App", 12864, 1, L5_GAP_KB, 448},
+    {"default", "Default", 8192, 1, L5_GAP_KB, 5120, 0},    {"multi2", "2 Apps", 8192, 2, L5_GAP_KB, 5120, 0},
+    {"multi4", "4 Apps", 8192, 4, L5_GAP_KB, 5120, 0},      {"minspiffs", "Min SPIFFS", 10240, 1, L5_GAP_KB, 3072, 0},
+    {"uiflow2", "UiFlow2", 7552, 1, L5_GAP_KB, 5760, 0},    {"doom", "Doom", 4096, 1, L5_GAP_KB, 9216, 0},
+    {"maxapp", "Max App", 12864, 1, L5_GAP_KB, 448, 0},
+    /* one app up to the UiFlow2 size (ORBIT DRUM's limit) next to two small ones (PSTX1, Spotify: up to 2.5 MB) */
+    {"bigsmall", "1 Big + 2 Small", 7552 + 2 * 2560, 3, L5_GAP_KB, 640, 7552},
 };
 const int l5_scheme_count = sizeof(l5_schemes) / sizeof(l5_schemes[0]);
 
@@ -65,7 +67,28 @@ static void report(l5_pt_progress_t cb, void *user, int pct, const char *label)
 
 l5_layout_t l5_layout_of_scheme(const l5_scheme_def_t *s)
 {
+    if (s->app0_kb && s->n > 1) {
+        return (l5_layout_t){.n = s->n, .app0_kb = s->app0_kb, .slot_kb = (s->app_kb - s->app0_kb) / (s->n - 1) / 64 * 64,
+                             .spiffs_kb = s->spiffs_kb, .fat_kb = s->fat_kb};
+    }
     return (l5_layout_t){.n = s->n, .slot_kb = s->app_kb / s->n / 64 * 64, .spiffs_kb = s->spiffs_kb, .fat_kb = s->fat_kb};
+}
+
+uint32_t l5_layout_slot_kb(const l5_layout_t *l, uint32_t i)
+{
+    return i == 0 && l->app0_kb ? l->app0_kb : l->slot_kb;
+}
+
+uint32_t l5_layout_apps_kb(const l5_layout_t *l)
+{
+    if (!l->n) return 0;
+    return l5_layout_slot_kb(l, 0) + (l->n - 1) * l->slot_kb;
+}
+
+uint32_t l5_layout_max_slot_kb(const l5_layout_t *l)
+{
+    const uint32_t a0 = l5_layout_slot_kb(l, 0);
+    return l->n > 1 && l->slot_kb > a0 ? l->slot_kb : a0;
 }
 
 const char *l5_layout_fat_label(const l5_layout_t *l)
@@ -85,8 +108,8 @@ static uint8_t gap_subtype(const l5_layout_t *l)
 
 bool l5_layout_equal(const l5_layout_t *a, const l5_layout_t *b)
 {
-    if (a->n != b->n || a->slot_kb != b->slot_kb || a->spiffs_kb != b->spiffs_kb || a->fat_kb != b->fat_kb ||
-        a->nextra != b->nextra) {
+    if (a->n != b->n || a->slot_kb != b->slot_kb || a->app0_kb != b->app0_kb || a->spiffs_kb != b->spiffs_kb ||
+        a->fat_kb != b->fat_kb || a->nextra != b->nextra) {
         return false;
     }
     for (uint32_t i = 0; i < a->nextra && i < L5_MAX_EXTRA; i++) {
@@ -129,7 +152,7 @@ const l5_scheme_def_t *l5_scheme_find(const char *key)
 
 uint32_t l5_layout_front_kb(const l5_layout_t *l)
 {
-    return l->n * l->slot_kb + l5_layout_extras_kb(l) + l->fat_kb;
+    return l5_layout_apps_kb(l) + l5_layout_extras_kb(l) + l->fat_kb;
 }
 
 l5_layout_t l5_pt_base_layout(const l5_flash_map_t *map)
@@ -139,9 +162,10 @@ l5_layout_t l5_pt_base_layout(const l5_flash_map_t *map)
         return l; /* already under the aurora_cfg rule, AUTO PARTITION layouts included */
     }
     l.spiffs_kb = l.spiffs_kb ? L5_GAP_KB : 0;
-    uint32_t apps = l.n * l.slot_kb;
+    uint32_t apps = l5_layout_apps_kb(&l);
     if (apps > L5_FRONT_KB) { /* cannot happen with launcher tables; keep it buildable */
         l.n = 1;
+        l.app0_kb = 0;
         l.slot_kb = apps = L5_FRONT_KB;
     }
     if (apps + l.fat_kb > L5_FRONT_KB) {
@@ -301,6 +325,7 @@ esp_err_t l5_pt_read_map(l5_flash_map_t *m)
         }
     }
     bool seen[16] = {0};
+    uint32_t kb[16] = {0}; /* size of ota_k */
     int spiffs = 0, fat = 0;
     l5_layout_t l = {0};
     for (int i = 0; i < m->table.n; i++) { /* the aurora_cfg rule decides how data partitions are read */
@@ -332,12 +357,12 @@ esp_err_t l5_pt_read_map(l5_flash_map_t *m)
         }
         if (is_ota_app(p)) {
             int k = p->subtype - ESP_PARTITION_SUBTYPE_APP_OTA_MIN;
-            if (seen[k] || (l.n && p->size / 1024 != l.slot_kb)) {
-                say(m->why, sizeof(m->why), "The app slots are not %s.", seen[k] ? "unique" : "the same size");
+            if (seen[k]) {
+                say(m->why, sizeof(m->why), "The app slots are not unique.");
                 return ESP_OK;
             }
             seen[k] = true;
-            l.slot_kb = p->size / 1024;
+            kb[k] = p->size / 1024;
             l.n++;
         } else if (is_aurora(p)) {
             /* Aurora's PIN store: kept as it is */
@@ -382,6 +407,15 @@ esp_err_t l5_pt_read_map(l5_flash_map_t *m)
             return ESP_OK;
         }
     }
+    /* app0 may have its own size; ota_1.. are all the same */
+    l.slot_kb = l.n > 1 ? kb[1] : kb[0];
+    for (uint32_t k = 2; k < l.n; k++) {
+        if (kb[k] != l.slot_kb) {
+            say(m->why, sizeof(m->why), "The app slots after app0 are not the same size.");
+            return ESP_OK;
+        }
+    }
+    if (l.n > 1 && kb[0] != l.slot_kb) l.app0_kb = kb[0];
     m->layout = l;
     /* tables made before the aurora_cfg rule (vfs over 0xF10000, SPIFFS of any size) are managed too:
        the next scheme change rebuilds the area; only the area bounds themselves must match */
@@ -564,6 +598,7 @@ esp_err_t l5_pt_build(const l5_flash_map_t *m, const l5_layout_t *l, l5_ptable_t
         return ESP_ERR_INVALID_STATE;
     }
     if (l->n < 1 || l->n > L5_MAX_SLOTS || l->slot_kb < L5_MIN_APP_KB || l->slot_kb % 64 ||
+        (l->app0_kb && (l->n < 2 || l->app0_kb < L5_MIN_APP_KB || l->app0_kb % 64)) ||
         (l->fat_kb && (l->fat_kb < L5_MIN_DATA_KB || l->fat_kb % 64))) {
         say(why, len, "Slots need 1 to %d x at least 1 MB, FAT at least 448 KB, all in 64 KB steps.", L5_MAX_SLOTS);
         return ESP_ERR_INVALID_ARG;
@@ -604,8 +639,8 @@ esp_err_t l5_pt_build(const l5_flash_map_t *m, const l5_layout_t *l, l5_ptable_t
     for (uint32_t i = 0; i < l->n; i++) {
         char label[16];
         snprintf(label, sizeof(label), "app%lu", (unsigned long)i);
-        add(out, label, ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_MIN + i, off, l->slot_kb * 1024);
-        off += l->slot_kb * 1024;
+        add(out, label, ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_MIN + i, off, l5_layout_slot_kb(l, i) * 1024);
+        off += l5_layout_slot_kb(l, i) * 1024;
     }
     for (uint32_t i = 0; i < l->nextra; i++) { /* a firmware's own data partitions, its labels and sizes */
         add(out, l->extra[i].label, ESP_PARTITION_TYPE_DATA, l->extra[i].subtype, off, l->extra[i].kb * 1024);

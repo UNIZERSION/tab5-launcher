@@ -43,10 +43,12 @@ typedef struct {
 } l5_ptable_t;
 
 /* data.js schemes: app area split into n equal slots, SPIFFS and FAT sizes in KB.
-   SPIFFS is 0 or L5_GAP_KB; n x slot + FAT fill the 13312 KB before aurora_cfg. */
+   SPIFFS is 0 or L5_GAP_KB; n x slot + FAT fill the 13312 KB before aurora_cfg.
+   app0_kb (since 26.10.2026): app0 gets its own size, the other n - 1 slots share the rest of app_kb. */
 typedef struct {
     const char *id, *label;
     uint32_t app_kb, n, spiffs_kb, fat_kb;
+    uint32_t app0_kb; /* 0: all n slots equal */
 } l5_scheme_def_t;
 extern const l5_scheme_def_t l5_schemes[];
 extern const int l5_scheme_count;
@@ -62,12 +64,13 @@ typedef struct {
     uint32_t kb;
 } l5_extra_t;
 
-/* The scheme-managed area: n equal app slots, then the extra data partitions, then FAT (all before
+/* The scheme-managed area: n app slots (all slot_kb, or app0 app0_kb and the others slot_kb), then the extra data partitions, then FAT (all before
    aurora_cfg); after aurora_cfg one partition of spiffs_kb (at most the 872 KB gap). Schemes use no
    extras, labels "vfs" / "spiffs" and the whole gap; AUTO PARTITION for a firmware uses its labels and
    exact sizes, so the firmware's data images can be written. Empty labels mean "vfs" / "spiffs". */
 typedef struct {
     uint32_t n, slot_kb, spiffs_kb, fat_kb;
+    uint32_t app0_kb; /* app0's size when it differs from the other slots (a big app next to small ones); 0: equal */
     uint32_t nextra;
     l5_extra_t extra[L5_MAX_EXTRA];
     char fat_label[17], gap_label[17];
@@ -100,7 +103,10 @@ esp_err_t l5_pt_read_map(l5_flash_map_t *map);
 /* the current layout brought under the aurora_cfg rule (SPIFFS -> gap, FAT clipped before 0xF10000),
    the starting point for RESIZE / DELETE / CREATE / OPTIMIZE / AUTO on tables made before the rule */
 l5_layout_t l5_pt_base_layout(const l5_flash_map_t *map);
-uint32_t l5_layout_front_kb(const l5_layout_t *l);           /* n x slot + extras + FAT, at most L5_FRONT_KB */
+uint32_t l5_layout_front_kb(const l5_layout_t *l);           /* app slots + extras + FAT, at most L5_FRONT_KB */
+uint32_t l5_layout_slot_kb(const l5_layout_t *l, uint32_t i); /* size of app slot i */
+uint32_t l5_layout_apps_kb(const l5_layout_t *l);            /* all app slots together */
+uint32_t l5_layout_max_slot_kb(const l5_layout_t *l);        /* the largest app slot */
 uint32_t l5_layout_extras_kb(const l5_layout_t *l);
 const char *l5_layout_fat_label(const l5_layout_t *l);       /* "vfs" unless AUTO PARTITION named it */
 const char *l5_layout_gap_label(const l5_layout_t *l);       /* "spiffs" unless AUTO PARTITION named it */

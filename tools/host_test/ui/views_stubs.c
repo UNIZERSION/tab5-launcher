@@ -35,6 +35,7 @@ const l5_scheme_def_t l5_schemes[] = {
     {"multi4", "4 Apps", 8192, 4, L5_GAP_KB, 5120},     {"minspiffs", "Min SPIFFS", 10240, 1, L5_GAP_KB, 3072},
     {"uiflow2", "UiFlow2", 7552, 1, L5_GAP_KB, 5760},   {"doom", "Doom", 4096, 1, L5_GAP_KB, 9216},
     {"maxapp", "Max App", 12864, 1, L5_GAP_KB, 448},
+    {"bigsmall", "1 Big + 2 Small", 7552 + 2 * 2560, 3, L5_GAP_KB, 640, 7552},
 };
 const int l5_scheme_count = sizeof(l5_schemes) / sizeof(l5_schemes[0]);
 
@@ -63,9 +64,25 @@ uint32_t l5_layout_extras_kb(const l5_layout_t *l)
     return kb;
 }
 
+uint32_t l5_layout_slot_kb(const l5_layout_t *l, uint32_t i)
+{
+    return i == 0 && l->app0_kb ? l->app0_kb : l->slot_kb;
+}
+
+uint32_t l5_layout_apps_kb(const l5_layout_t *l)
+{
+    return l->n ? l5_layout_slot_kb(l, 0) + (l->n - 1) * l->slot_kb : 0;
+}
+
+uint32_t l5_layout_max_slot_kb(const l5_layout_t *l)
+{
+    const uint32_t a0 = l5_layout_slot_kb(l, 0);
+    return l->n > 1 && l->slot_kb > a0 ? l->slot_kb : a0;
+}
+
 uint32_t l5_layout_front_kb(const l5_layout_t *l)
 {
-    return l->n * l->slot_kb + l5_layout_extras_kb(l) + l->fat_kb;
+    return l5_layout_apps_kb(l) + l5_layout_extras_kb(l) + l->fat_kb;
 }
 
 const char *l5_layout_fat_label(const l5_layout_t *l)
@@ -80,6 +97,10 @@ const char *l5_layout_gap_label(const l5_layout_t *l)
 
 l5_layout_t l5_layout_of_scheme(const l5_scheme_def_t *s)
 {
+    if (s->app0_kb && s->n > 1) {
+        return (l5_layout_t){.n = s->n, .app0_kb = s->app0_kb, .slot_kb = (s->app_kb - s->app0_kb) / (s->n - 1) / 64 * 64,
+                             .spiffs_kb = s->spiffs_kb, .fat_kb = s->fat_kb};
+    }
     return (l5_layout_t){.n = s->n, .slot_kb = s->app_kb / s->n / 64 * 64, .spiffs_kb = s->spiffs_kb, .fat_kb = s->fat_kb};
 }
 
@@ -93,8 +114,8 @@ const l5_scheme_def_t *l5_scheme_find(const char *key)
 
 bool l5_layout_equal(const l5_layout_t *a, const l5_layout_t *b)
 {
-    return a->n == b->n && a->slot_kb == b->slot_kb && a->spiffs_kb == b->spiffs_kb && a->fat_kb == b->fat_kb &&
-           a->nextra == b->nextra;
+    return a->n == b->n && a->slot_kb == b->slot_kb && a->app0_kb == b->app0_kb && a->spiffs_kb == b->spiffs_kb &&
+           a->fat_kb == b->fat_kb && a->nextra == b->nextra;
 }
 
 esp_err_t l5_pt_build(const l5_flash_map_t *map, const l5_layout_t *l, l5_ptable_t *out, char *why, size_t len)

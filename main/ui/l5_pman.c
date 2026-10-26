@@ -99,6 +99,19 @@ static bool gap_part(const l5_part_t *p)
     return s_map.aurora ? p->offset >= L5_GAP_ADDR : p->subtype == ESP_PARTITION_SUBTYPE_DATA_SPIFFS;
 }
 
+/* "3 app slots \xC3\x97 2.5MB" or "app0 7.4MB + 2 app slots \xC3\x97 2.5MB" */
+static void slots_text(const l5_layout_t *l, char *out, size_t len)
+{
+    char a[16], b[16];
+    l5_fmt_kb(b, sizeof(b), l->slot_kb);
+    if (l->app0_kb) {
+        l5_fmt_kb(a, sizeof(a), l->app0_kb);
+        snprintf(out, len, "app0 %sB + %lu app slot%s \xC3\x97 %sB", a, (unsigned long)(l->n - 1), l->n == 2 ? "" : "s", b);
+    } else {
+        snprintf(out, len, "%lu app slot%s \xC3\x97 %sB", (unsigned long)l->n, l->n == 1 ? "" : "s", b);
+    }
+}
+
 static l5_layout_t base(void)
 {
     return l5_pt_base_layout(&s_map);
@@ -330,8 +343,8 @@ static void change_layout(const l5_layout_t *l, const char *title, const char *s
     l5_pt_diff_t d;
     l5_pt_diff(&j->map, &j->next, &d);
     strlcpy(j->scheme_id, scheme_id ? scheme_id : "custom", sizeof(j->scheme_id));
-    char slot[16], sp[16], fat[16], data[220], extras[96] = "", apps[300], body[900];
-    l5_fmt_kb(slot, sizeof(slot), l->slot_kb);
+    char slot[64], sp[16], fat[16], data[220], extras[96] = "", apps[300], body[900];
+    slots_text(l, slot, sizeof(slot));
     l5_fmt_kb(sp, sizeof(sp), l->spiffs_kb);
     l5_fmt_kb(fat, sizeof(fat), l->fat_kb);
     for (uint32_t i = 0; i < l->nextra; i++) { /* AUTO PARTITION: the firmware's own partitions */
@@ -344,9 +357,9 @@ static void change_layout(const l5_layout_t *l, const char *title, const char *s
     if (d.apps) l5w_apps_erased(apps, sizeof(apps));
     else snprintf(apps, sizeof(apps), "The installed apps stay.");
     snprintf(body, sizeof(body),
-             "%lu app slot%s \xC3\x97 %sB%s \xC2\xB7 %s %s \xC2\xB7 %s %s.\n\n%s%s%s%s\n\nLauncher stays in its own "
+             "%s%s \xC2\xB7 %s %s \xC2\xB7 %s %s.\n\n%s%s%s%s\n\nLauncher stays in its own "
              "partition. The Tab5 restarts at the end: do not turn it off or press RESET before that.",
-             (unsigned long)l->n, l->n == 1 ? "" : "s", slot, extras, l5_layout_gap_label(l), l->spiffs_kb ? sp : "none",
+             slot, extras, l5_layout_gap_label(l), l->spiffs_kb ? sp : "none",
              l5_layout_fat_label(l), l->fat_kb ? fat : "none",
              apps, data, extra ? " " : "",
              extra ? extra : "");
@@ -483,14 +496,25 @@ void l5_pman_pick_scheme(void)
         l5_info("PARTITION", "Cannot read the partition table", s_map.why);
         return;
     }
-    l5_menu_item_t items[8];
-    char labels[8][96];
+    l5_menu_item_t items[12];
+    char labels[12][112];
     int k = 0;
     bool known = false;
-    for (int i = 0; i < l5_scheme_count && k < 7; i++, k++) {
+    for (int i = 0; i < l5_scheme_count && k < 11; i++, k++) {
         l5_layout_t l = l5_layout_of_scheme(&l5_schemes[i]);
         char slot[16], sp[16], fat[16];
         l5_fmt_kb(slot, sizeof(slot), l.slot_kb);
+        if (l.app0_kb) { /* "1 Big + 2 Small · 7.4M + 2x 2.5M · fat 640K": one line in the menu (SPIFFS as everywhere) */
+            char big[16];
+            l5_fmt_kb(big, sizeof(big), l.app0_kb);
+            l5_fmt_kb(fat, sizeof(fat), l.fat_kb);
+            snprintf(labels[k], sizeof(labels[k]), "%s \xC2\xB7 %s + %lu\xC3\x97 %s \xC2\xB7 fat %s", l5_schemes[i].label, big,
+                     (unsigned long)(l.n - 1), slot, fat);
+            bool cur = s_map.managed && s_map.aurora && l5_layout_equal(&l, &s_map.layout);
+            known |= cur;
+            items[k] = (l5_menu_item_t){l5_schemes[i].id, cur ? L5_ICON_CHECK : L5_ICON_PMAN, labels[k], false};
+            continue;
+        }
         l5_fmt_kb(sp, sizeof(sp), l.spiffs_kb);
         l5_fmt_kb(fat, sizeof(fat), l.fat_kb);
         snprintf(labels[k], sizeof(labels[k]), "%s \xC2\xB7 %lu\xC3\x97 app %s \xC2\xB7 spiffs %s \xC2\xB7 fat %s", l5_schemes[i].label,
@@ -572,7 +596,7 @@ static void sanity_report(const op_job_t *j, const l5_image_check_t *c)
     if (c->chip_id == 0 && !c->segments) {
         snprintf(body, sizeof(body), "%s Size %s.", c->error, size);
     } else {
-        uint64_t slot = (uint64_t)g_slots.slot_kb * 1024;
+        uint64_t slot = (uint64_t)l5_slots_max_kb() * 1024; /* the largest slot */
         const char *best = l5_slots_best_scheme(c->image_len);
         int n = j->merged ? snprintf(body, sizeof(body), "Merged image from 0x%X: the app at 0x%X of the file was checked.%s%s\n",
                                      (unsigned)j->base, (unsigned)j->app_offset, j->note[0] ? " " : "", j->note)
@@ -915,6 +939,13 @@ static void pick_bin(bool for_auto)
     l5_menu("PMAN", for_auto ? "Fit partitions to firmware" : "Check firmware image", items, s_nbins, bin_cb, NULL);
 }
 
+/* an app of `bytes` with 10 % room for updates, in 64 KB steps, at least 1 MB */
+static uint32_t tight_kb(uint32_t bytes)
+{
+    uint32_t kb = (uint32_t)(((uint64_t)bytes * 11 / 10 / 1024 + 63) / 64 * 64);
+    return kb < L5_MIN_APP_KB ? L5_MIN_APP_KB : kb;
+}
+
 static void optimize(void)
 {
     uint32_t biggest = 0;
@@ -931,14 +962,29 @@ static void optimize(void)
         return;
     }
     l5_layout_t l = base();
-    uint32_t slot = (uint32_t)(((uint64_t)biggest * 11 / 10 / 1024 + 63) / 64 * 64);
-    if (slot < L5_MIN_APP_KB) slot = L5_MIN_APP_KB;
-    if (slot >= l.slot_kb) {
-        l5_info("PMAN", "Already tight", "The app slots are already close to the largest installed app.");
-        return;
+    uint32_t slot = tight_kb(biggest);
+    if (l.app0_kb) { /* "1 Big + 2 Small": app0 to its app, the others to the largest of theirs (an empty group stays) */
+        uint32_t rest = 0;
+        for (int i = 1; i < g_slots.n; i++) {
+            if (g_slots.slot[i].used && g_slots.slot[i].size > rest) rest = g_slots.slot[i].size;
+        }
+        const uint32_t a0 = g_slots.slot[0].used ? tight_kb(g_slots.slot[0].size) : l.app0_kb;
+        const uint32_t small = rest ? tight_kb(rest) : l.slot_kb;
+        if (a0 >= l.app0_kb && small >= l.slot_kb) {
+            l5_info("PMAN", "Already tight", "The app slots are already close to their installed apps.");
+            return;
+        }
+        l.app0_kb = a0 < l.app0_kb ? a0 : l.app0_kb;
+        l.slot_kb = small < l.slot_kb ? small : l.slot_kb;
+        if (l.app0_kb == l.slot_kb) l.app0_kb = 0;
+    } else {
+        if (slot >= l.slot_kb) {
+            l5_info("PMAN", "Already tight", "The app slots are already close to the largest installed app.");
+            return;
+        }
+        l.slot_kb = slot;
     }
-    l.slot_kb = slot;
-    uint32_t fat = L5_FRONT_KB - l.n * slot - l5_layout_extras_kb(&l); /* the rest up to aurora_cfg goes to FAT */
+    uint32_t fat = L5_FRONT_KB - l5_layout_apps_kb(&l) - l5_layout_extras_kb(&l); /* the rest up to aurora_cfg goes to FAT */
     l.fat_kb = fat >= L5_MIN_DATA_KB ? fat : 0;
     change_layout(&l, "Optimize flash?", "custom",
                   "Apps cannot be moved: install them again from SD afterwards (the .bin files on the card stay).");
@@ -948,6 +994,7 @@ static void optimize(void)
 
 static char s_edit_label[17];
 static bool s_edit_app;
+static enum { EDIT_ALL, EDIT_APP0, EDIT_REST } s_edit_slots; /* which app slots RESIZE changes */
 
 static void resize_cb(const char *id, void *user)
 {
@@ -957,9 +1004,13 @@ static void resize_cb(const char *id, void *user)
     l5_layout_t l = base();
     char title[64], k[16];
     l5_fmt_kb(k, sizeof(k), kb);
-    if (s_edit_app) {
+    if (s_edit_app && s_edit_slots == EDIT_APP0) {
+        l.app0_kb = kb == l.slot_kb ? 0 : kb;
+        snprintf(title, sizeof(title), "Resize app0 to %sB?", k);
+    } else if (s_edit_app) {
         l.slot_kb = kb;
-        snprintf(title, sizeof(title), "Resize the app slots to %sB?", k);
+        if (l.app0_kb == kb) l.app0_kb = 0; /* the same size again: all equal */
+        snprintf(title, sizeof(title), s_edit_slots == EDIT_REST ? "Resize the other app slots to %sB?" : "Resize the app slots to %sB?", k);
     } else {
         l.fat_kb = kb;
         snprintf(title, sizeof(title), "Resize %s to %sB?", s_edit_label, k);
@@ -989,8 +1040,10 @@ static void resize(const row_t *r)
     s_edit_app = app_slot(r->p);
     strlcpy(s_edit_label, r->p->label, sizeof(s_edit_label));
     const l5_layout_t base_l = base(), *L = &base_l;
-    uint32_t n = s_edit_app ? L->n : 1;
-    uint32_t cur = s_edit_app ? L->slot_kb : L->fat_kb;
+    /* with app0 of its own size the tapped slot decides: app0 alone, or the slots after it together */
+    s_edit_slots = !L->app0_kb ? EDIT_ALL : r->p->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_MIN ? EDIT_APP0 : EDIT_REST;
+    uint32_t n = !s_edit_app ? 1 : s_edit_slots == EDIT_APP0 ? 1 : s_edit_slots == EDIT_REST ? L->n - 1 : L->n;
+    uint32_t cur = !s_edit_app ? L->fat_kb : s_edit_slots == EDIT_APP0 ? L->app0_kb : L->slot_kb;
     uint32_t max = (cur * n + free_kb()) / n / 64 * 64;
     uint32_t min = s_edit_app ? L5_MIN_APP_KB : L5_MIN_DATA_KB;
     uint32_t opts[16];
@@ -1007,7 +1060,9 @@ static void resize(const row_t *r)
     }
     char title[64], kb[16];
     l5_fmt_kb(kb, sizeof(kb), cur);
-    if (s_edit_app) snprintf(title, sizeof(title), "Resize all %lu app slots (now %sB)", (unsigned long)n, kb);
+    if (s_edit_app && s_edit_slots == EDIT_APP0) snprintf(title, sizeof(title), "Resize app0 (now %sB)", kb);
+    else if (s_edit_app && s_edit_slots == EDIT_REST) snprintf(title, sizeof(title), "Resize app1..app%lu (now %sB)", (unsigned long)n, kb);
+    else if (s_edit_app) snprintf(title, sizeof(title), "Resize all %lu app slots (now %sB)", (unsigned long)n, kb);
     else snprintf(title, sizeof(title), "Resize %s (now %sB)", s_edit_label, kb);
     l5_menu("PMAN", title, items, k, resize_cb, NULL);
 }

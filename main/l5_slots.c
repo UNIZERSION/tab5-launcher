@@ -134,7 +134,8 @@ static void today(char out[11])
 
 static const char *match_scheme(void)
 {
-    const l5_layout_t l = {.n = g_slots.n, .slot_kb = g_slots.slot_kb, .spiffs_kb = g_slots.spiffs_kb, .fat_kb = g_slots.fat_kb};
+    const l5_layout_t l = {.n = g_slots.n, .slot_kb = g_slots.slot_kb, .app0_kb = g_slots.app0_kb, .spiffs_kb = g_slots.spiffs_kb,
+                           .fat_kb = g_slots.fat_kb};
     const l5_scheme_def_t *s = l5_layout_match(&l);
     return s ? s->label : "Custom";
 }
@@ -225,7 +226,9 @@ void l5_slots_scan(void)
         read_slot(i);
         g_slots.n++;
     }
-    g_slots.slot_kb = g_slots.n ? g_slots.slot[0].part->size / 1024 : 0;
+    const uint32_t kb0 = g_slots.n ? g_slots.slot[0].part->size / 1024 : 0;
+    g_slots.slot_kb = g_slots.n > 1 ? g_slots.slot[1].part->size / 1024 : kb0; /* app1.. are equal (l5_ptable) */
+    g_slots.app0_kb = g_slots.n > 1 && kb0 != g_slots.slot_kb ? kb0 : 0;
     const esp_partition_t *sp = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, NULL);
     const esp_partition_t *fat = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, NULL);
     g_slots.spiffs_kb = sp ? sp->size / 1024 : 0;
@@ -254,8 +257,10 @@ void l5_slots_scan(void)
         }
     }
     g_slots.boot = boot;
-    ESP_LOGI(TAG, "%d slots x %lu KB (%s scheme), %d used, boot=%d", g_slots.n, (unsigned long)g_slots.slot_kb,
-             g_slots.scheme, l5_slots_used(), g_slots.boot);
+    char slots[96];
+    l5_slots_text(slots, sizeof(slots));
+    ESP_LOGI(TAG, "%d slots, %s (%s scheme), %d used, boot=%d", g_slots.n, slots, g_slots.scheme, l5_slots_used(),
+             g_slots.boot);
 }
 
 int l5_slots_used(void)
@@ -646,7 +651,8 @@ const char *l5_slots_best_scheme(uint32_t bytes)
     static const char *const order[] = {"default", "uiflow2", "minspiffs", "maxapp"}; /* L5.bestScheme */
     for (size_t o = 0; o < sizeof(order) / sizeof(order[0]); o++) {
         const l5_scheme_def_t *s = l5_scheme_find(order[o]);
-        if (s && (uint64_t)l5_layout_of_scheme(s).slot_kb * 1024 >= bytes) {
+        const l5_layout_t l = s ? l5_layout_of_scheme(s) : (l5_layout_t){0};
+        if (s && (uint64_t)l5_layout_max_slot_kb(&l) * 1024 >= bytes) {
             return s->label;
         }
     }

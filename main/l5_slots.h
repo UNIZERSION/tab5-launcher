@@ -3,6 +3,7 @@
    but reads the real partition table instead of a scheme description. */
 #pragma once
 #include <stdbool.h>
+#include <stdio.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "esp_app_desc.h"
@@ -30,7 +31,8 @@ typedef struct {
 
 typedef struct {
     int n;                 /* number of app slots in the partition table */
-    uint32_t slot_kb;      /* size of one slot (app0) */
+    uint32_t slot_kb;      /* size of the slots after app0 (all of them when app0_kb is 0) */
+    uint32_t app0_kb;      /* app0's own size when it differs ("1 Big + 2 Small"), else 0 */
     uint32_t spiffs_kb;
     uint32_t fat_kb;
     const char *scheme;    /* scheme label matched against data.js, "Custom" otherwise */
@@ -39,9 +41,35 @@ typedef struct {
 } l5_slots_t;
 
 extern l5_slots_t g_slots;
+/* size of app slot `index` in KB, 0 for no such slot (from slot_kb / app0_kb, which l5_slots_scan reads) */
+static inline uint32_t l5_slots_kb(int index)
+{
+    if (index < 0 || index >= g_slots.n) return 0;
+    return index == 0 && g_slots.app0_kb ? g_slots.app0_kb : g_slots.slot_kb;
+}
+/* the largest app slot: whether an app fits anywhere */
+static inline uint32_t l5_slots_max_kb(void)
+{
+    return g_slots.app0_kb > g_slots.slot_kb ? g_slots.app0_kb : g_slots.slot_kb;
+}
+/* "1 x 8M", "2 x 4M", "app0 7.4M + 2 x 2.5M" with a multiplication sign (the l5_fmt_kb sizes) */
+static inline void l5_slots_text(char *out, size_t len)
+{
+    char a[16], b[16];
+    const uint32_t kb[2] = {g_slots.app0_kb, g_slots.slot_kb};
+    char *t[2] = {a, b};
+    for (int i = 0; i < 2; i++) {
+        if (kb[i] >= 1024 && kb[i] % 1024) snprintf(t[i], 16, "%.1fM", kb[i] / 1024.0);
+        else if (kb[i] >= 1024) snprintf(t[i], 16, "%uM", (unsigned)(kb[i] / 1024));
+        else snprintf(t[i], 16, "%uK", (unsigned)kb[i]);
+    }
+    if (g_slots.app0_kb) snprintf(out, len, "app0 %s + %d \xC3\x97 %s", a, g_slots.n - 1, b);
+    else snprintf(out, len, "%d \xC3\x97 %s", g_slots.n, b);
+}
 
 void l5_slots_scan(void);
 int l5_slots_used(void);
+
 const l5_slot_t *l5_slots_boot_app(void);   /* S.installed, NULL when nothing is in flash */
 void l5_slots_select(int index);            /* persists S.boot in NVS */
 /* "Aurora-Player-1.3.21 in app0, Bruce in app1": the installed apps, for erase confirmations.
