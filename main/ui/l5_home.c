@@ -546,6 +546,7 @@ void l5_home_render(lv_obj_t *view)
     H.panel = panel;
     lv_obj_add_event_cb(panel, home_deleted_cb, LV_EVENT_DELETE, NULL);
     l5_panel(panel, true);
+    l5_wallpaper_under(panel, L5_PANEL, 120, LV_OPA_COVER); /* <card>/wallpaper.jpg / .png behind the carousel */
     lv_obj_set_pos(panel, L5_GAP, L5_PANEL_Y);
     lv_obj_set_size(panel, L5_FULL_W, L5_PANEL_H);
     lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);

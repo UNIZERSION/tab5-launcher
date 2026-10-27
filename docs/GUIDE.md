@@ -145,6 +145,18 @@ The launcher takes two colors from every icon: the color most of the icon has, a
 - **Accent (CFG > UI color > APP):** the whole launcher (the ring, buttons, frames, side menu) takes the vivid color of the boot app's icon. Choose another boot app and the accent changes with it. Without an icon it stays red.
 - The launcher remembers the boot app's color, so after a restart the boot screen shows it from the first moment.
 
+### Wallpaper from the SD card
+
+Put a picture named **wallpaper.jpg** (or **wallpaper.png**) in the main folder of the card. The launcher shows it on the boot screen, behind the HOME carousel and under the idle clock, with a shade in the theme's colour so the text stays readable: darker in Graphite and Midnight, lighter in Daylight. The idle clock always darkens it.
+
+![The boot screen with a wallpaper](images/wallpaper-boot.png)
+
+- **Size:** any photo from 640 × 360 px up; it is cut to fill the 1280 × 720 screen (the middle of the picture stays). Larger photos are shrunk, smaller ones enlarged smoothly; 1280 × 720 or larger looks sharpest.
+- **JPEG:** a normal ("baseline") JPEG, as cameras and phones save it. A **progressive** JPEG is not shown: save it again as a standard JPEG.
+- **PNG:** up to 1920 × 1080 px and 4 MB, 8 bits a channel. For larger photos use JPEG.
+- If both files are there, wallpaper.jpg is used. Delete the file (or rename it) to go back to the plain look; the launcher notices it the next time HOME is drawn.
+- It is read in the background like the app icons, so it appears a moment after the boot screen. If the Tab5 is short of memory at that moment, it tries again twice, 10 s apart.
+
 ## SD: card manager
 
 The SD tab browses the card and installs `.bin` apps from it into a slot.

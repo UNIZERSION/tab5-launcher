@@ -8,7 +8,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "nvs.h"
 #include "esp_timer.h"
@@ -19,6 +21,8 @@
 #include "l5_slots.h"
 #include "l5_ui.h"
 #include "src/libs/lodepng/lodepng.h"
+#include "src/libs/tjpgd/tjpgd.h"
+#include "src/misc/lv_area_private.h" /* lv_area_intersect() */
 
 #define TAG "l5_icon"
 #define APPS_DIR CONFIG_BSP_SD_MOUNT_POINT "/apps"
@@ -31,6 +35,13 @@
 #define HUES 24             /* colour bins of 15 degrees: the icon's colours (icon_colors) */
 #define RGB_OK 0x1000000u   /* set in accent / tint: the colour is there (0 = the icon has none) */
 #define NVS_NS "l5"         /* the boot app's accent for the next start (l5_appicon_boot_accent) */
+#define WALL_W L5_SCREEN_W  /* the wallpaper: <card>/wallpaper.jpg or .png, cut to fill the screen */
+#define WALL_H L5_SCREEN_H
+#define WALL_BAND 40        /* output rows the scaler holds: a JPEG's 16-row MCU band, enlarged up to 2x, and edges */
+#define WALL_MAX_SCALE 2.0f /* a picture is enlarged at most 2x: at least 640 x 360 */
+#define WALL_PNG_PX (1920u * 1080u) /* a PNG is decoded whole (4 bytes a pixel, 8.3 MB): photos as JPEG */
+#define WALL_PNG_FILE (4l << 20)
+static const char *const WALL_FILES[] = {"wallpaper.jpg", "wallpaper.jpeg", "wallpaper.png"};
 
 typedef struct {
     char project[33];
@@ -62,6 +73,10 @@ typedef struct {
     int n;
     bool retry; /* an icon ran out of memory: the card is looked at again in RETRY_MS */
     item_t it[CACHE];
+    uint32_t wall_sig;   /* in: the wallpaper read; out: the one on the card */
+    uint8_t wall_tries;  /* decodes of it that ran out of memory in a row */
+    bool wall_new;       /* it changed: wall holds the new one (NULL: none, or refused) */
+    lv_draw_buf_t *wall;
 } job_t;
 
 typedef enum { DECODED, REFUSED, NO_MEMORY } decode_t;
@@ -73,6 +88,9 @@ static bool s_again;            /* asked for while a job was out */
 static TaskHandle_t s_task;     /* the worker, made by the first job and kept */
 static job_t *volatile s_job;   /* the worker's next job: set before its notification, while no job is out */
 static lv_timer_t *s_retry;
+static lv_draw_buf_t *s_wall;  /* RGB565 WALL_W x WALL_H, darkened; NULL = no wallpaper (LVGL task) */
+static uint32_t s_wall_sig;
+static uint8_t s_wall_tries;
 
 #ifndef ESP_PLATFORM
 int l5_appicon_test_nomem; /* PC test (tools/host_test/ui/shots.c): this many decodes run out of memory */
@@ -359,20 +377,32 @@ static unsigned be32(const uint8_t *p)
     return (unsigned)p[0] << 24 | (unsigned)p[1] << 16 | (unsigned)p[2] << 8 | p[3];
 }
 
-static decode_t decode(const char *path, item_t *it)
+/* A PNG file as LVGL's lodepng decodes it: *img (lv_draw_buf_destroy() it) with rows of 4 * w bytes R, G, B, A.
+   Refused before anything is allocated for the pixels: more than max_file bytes, a side over max_side, more than
+   max_px pixels, 16 bits a channel. */
+/* enough PSRAM: one piece of largest bytes, total bytes in all, and a margin for the rest of the launcher (the PC
+   has no such limit) */
+static bool psram_fits(size_t largest, size_t total)
 {
-    const int64_t t0 = esp_timer_get_time();
-#ifndef ESP_PLATFORM
-    if (l5_appicon_test_nomem > 0) {
-        l5_appicon_test_nomem--;
-        return NO_MEMORY;
-    }
+#ifdef ESP_PLATFORM
+    const size_t margin = 512u << 10;
+    return heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) >= largest + margin &&
+           heap_caps_get_free_size(MALLOC_CAP_SPIRAM) >= total + margin;
+#else
+    (void)largest, (void)total;
+    return true;
 #endif
+}
+
+static decode_t png_load(const char *path, long max_file, unsigned max_side, unsigned long max_px, bool mem_check,
+                         lv_draw_buf_t **img, unsigned *wp, unsigned *hp)
+{
+    *img = NULL;
     FILE *f = fopen(path, "rb");
     if (!f) return REFUSED;
     long n = fseek(f, 0, SEEK_END) == 0 ? ftell(f) : -1;
-    if (n <= 0 || n > (long)MAX_FILE) {
-        if (n > (long)MAX_FILE) ESP_LOGW(TAG, "%s: %ld bytes, at most %u", path, n, MAX_FILE);
+    if (n <= 0 || n > max_file) {
+        if (n > max_file) ESP_LOGW(TAG, "%s: %ld bytes, at most %ld", path, n, max_file);
         fclose(f);
         return REFUSED;
     }
@@ -387,8 +417,8 @@ static decode_t decode(const char *path, item_t *it)
        type */
     unsigned w = n >= 26 && !memcmp(png, "\x89PNG\r\n\x1a\n", 8) && !memcmp(png + 12, "IHDR", 4) ? be32(png + 16) : 0;
     unsigned h = w ? be32(png + 20) : 0;
-    if (!w || !h || w > MAX_SIDE || h > MAX_SIDE) {
-        if (w) ESP_LOGW(TAG, "%s: %ux%u px, at most %ux%u", path, w, h, MAX_SIDE, MAX_SIDE);
+    if (!w || !h || w > max_side || h > max_side || (unsigned long)w * h > max_px) {
+        if (w) ESP_LOGW(TAG, "%s: %ux%u px, too large (sides up to %u, %lu pixels)", path, w, h, max_side, max_px);
         else ESP_LOGW(TAG, "%s: not a PNG file", path);
         free(png);
         return REFUSED;
@@ -403,18 +433,40 @@ static decode_t decode(const char *path, item_t *it)
         free(png);
         return REFUSED;
     }
+    if (mem_check && !psram_fits((size_t)w * h * 4, (size_t)w * h * 4)) { /* the file is in memory already */
+        free(png);
+        return NO_MEMORY;
+    }
     /* LVGL's lodepng hands out an lv_draw_buf_t (not a bare pixel array) whose rows of 4 * w bytes are R, G, B, A;
        lv_lodepng.c swaps R and B afterwards for LVGL, this file reads them as they come. The firmware's lodepng has
        no error texts (CMakeLists.txt): the number is lodepng's error code. */
-    lv_draw_buf_t *img = NULL;
-    unsigned err = lodepng_decode32((unsigned char **)&img, &w, &h, png, n);
+    unsigned err = lodepng_decode32((unsigned char **)img, &w, &h, png, n);
     free(png);
-    if (!err && (!img || img->header.stride != w * 4)) err = 1000; /* not the layout this file expects */
+    if (!err && (!*img || (*img)->header.stride != w * 4)) err = 1000; /* not the layout this file expects */
     if (err) {
         ESP_LOGW(TAG, "%s: PNG error %u", path, err);
-        if (img) lv_draw_buf_destroy(img);
+        if (*img) lv_draw_buf_destroy(*img);
+        *img = NULL;
         return err == 83 ? NO_MEMORY : REFUSED; /* 83: lodepng's "memory allocation failed" */
     }
+    *wp = w;
+    *hp = h;
+    return DECODED;
+}
+
+static decode_t decode(const char *path, item_t *it)
+{
+    const int64_t t0 = esp_timer_get_time();
+#ifndef ESP_PLATFORM
+    if (l5_appicon_test_nomem > 0) {
+        l5_appicon_test_nomem--;
+        return NO_MEMORY;
+    }
+#endif
+    lv_draw_buf_t *img;
+    unsigned w, h;
+    const decode_t r = png_load(path, (long)MAX_FILE, MAX_SIDE, (unsigned long)MAX_SIDE * MAX_SIDE, false, &img, &w, &h);
+    if (r != DECODED) return r;
     uint8_t *rgba = img->data;
     const unsigned w0 = w, h0 = h;
     premultiply(rgba, (size_t)w * h);
@@ -432,6 +484,349 @@ static decode_t decode(const char *path, item_t *it)
              (unsigned long)(it->accent & 0xFFFFFF), (unsigned long)(it->tint & 0xFFFFFF),
              (int)((esp_timer_get_time() - t0) / 1000));
     return DECODED;
+}
+
+/* ---------- the wallpaper ---------- */
+
+/* Cuts a picture to fill WALL_W x WALL_H ("cover": scaled by the larger of the two ratios, centred), fed row by row
+   from the top (TJpgDec's MCU rows, PNG rows).
+   Shrinking (scale <= 1): each source pixel adds to the output pixel it falls in; only WALL_BAND output rows are
+   held, and a row is written once the rows below no longer reach it: a 4000 x 3000 photo needs 820 KB here, not
+   its decoded size.
+   Enlarging (scale up to 2): the part of the picture that is shown is kept (at most 1280 x 720 x 3 bytes) and
+   sampled bilinearly at the end, so it is smooth, not blocky.
+   The result is RGB565 with a 4 x 4 ordered dither (a smooth sky showed bands of the 32 / 64 levels); it is not
+   darkened: the views lay a scrim of their theme's colour over it (wall_draw_cb). */
+typedef struct {
+    float s, offx, offy;  /* output = source * s - off */
+    int src_w, src_h;
+    bool enlarge;
+    /* shrinking */
+    uint16_t *x0;         /* per source column: the output column */
+    uint32_t *acc;        /* WALL_BAND rows x WALL_W x (r, g, b, count); output row y at y % WALL_BAND */
+    int next;             /* the first output row not written yet */
+    /* enlarging: the source rectangle [cx, cx + cw) x [cy, cy + ch) as R, G, B */
+    int cx, cy, cw, ch;
+    uint8_t *crop;
+    lv_draw_buf_t *out;
+} cover_t;
+
+static void put565(const cover_t *c, int x, int y, uint32_t r, uint32_t g, uint32_t b)
+{
+    static const uint8_t BAYER[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
+    const uint32_t d = BAYER[y & 3][x & 3];
+    r += d / 2, g += d / 4, b += d / 2;
+    r = r > 255 ? 255 : r, g = g > 255 ? 255 : g, b = b > 255 ? 255 : b;
+    uint16_t *o = (uint16_t *)(c->out->data + (size_t)y * c->out->header.stride);
+    o[x] = (uint16_t)((r >> 3) << 11 | (g >> 2) << 5 | b >> 3);
+}
+
+static int out_row(const cover_t *c, int sy)
+{
+    const int y = (int)floorf(sy * c->s - c->offy);
+    return y < 0 ? 0 : y > WALL_H ? WALL_H : y;
+}
+
+static void cover_free(cover_t *c)
+{
+    free(c->x0);
+    free(c->acc);
+    free(c->crop);
+    if (c->out) lv_draw_buf_destroy(c->out);
+    memset(c, 0, sizeof(*c));
+}
+
+
+static decode_t cover_begin(cover_t *c, int w, int h, const char *path)
+{
+    memset(c, 0, sizeof(*c));
+    c->s = fmaxf((float)WALL_W / w, (float)WALL_H / h);
+    if (c->s > WALL_MAX_SCALE) {
+        ESP_LOGW(TAG, "%s: %dx%d px, at least %dx%d to fill the screen", path, w, h, (int)(WALL_W / WALL_MAX_SCALE),
+                 (int)(WALL_H / WALL_MAX_SCALE));
+        return REFUSED;
+    }
+    c->src_w = w;
+    c->src_h = h;
+    c->offx = (w * c->s - WALL_W) / 2;
+    c->offy = (h * c->s - WALL_H) / 2;
+    c->enlarge = c->s > 1.0f;
+    if (c->enlarge) { /* the source pixels the output samples, one more on each side for the bilinear weights */
+        c->cx = (int)floorf(c->offx / c->s) - 1;
+        c->cy = (int)floorf(c->offy / c->s) - 1;
+        c->cx = c->cx < 0 ? 0 : c->cx;
+        c->cy = c->cy < 0 ? 0 : c->cy;
+        c->cw = (int)ceilf((c->offx + WALL_W) / c->s) + 1 - c->cx;
+        c->ch = (int)ceilf((c->offy + WALL_H) / c->s) + 1 - c->cy;
+        if (c->cx + c->cw > w) c->cw = w - c->cx;
+        if (c->cy + c->ch > h) c->ch = h - c->cy;
+    }
+    const size_t work = c->enlarge ? (size_t)c->cw * c->ch * 3 : (size_t)WALL_BAND * WALL_W * 16;
+    if (!psram_fits(WALL_W * WALL_H * 2, WALL_W * WALL_H * 2 + work)) return NO_MEMORY;
+    c->out = lv_draw_buf_create(WALL_W, WALL_H, LV_COLOR_FORMAT_RGB565, LV_STRIDE_AUTO);
+    if (c->enlarge) {
+        c->crop = malloc((size_t)c->cw * c->ch * 3);
+    } else {
+        c->x0 = malloc(w * sizeof(uint16_t));
+        c->acc = calloc((size_t)WALL_BAND * WALL_W * 4, sizeof(uint32_t));
+        for (int x = 0; c->x0 && x < w; x++) {
+            const int a = (int)floorf(x * c->s - c->offx);
+            c->x0[x] = (uint16_t)(a < 0 || a >= WALL_W ? 0xFFFF : a); /* 0xFFFF: cut off */
+        }
+    }
+    if (!c->out || (c->enlarge ? !c->crop : !c->x0 || !c->acc)) {
+        cover_free(c);
+        return NO_MEMORY;
+    }
+    return DECODED;
+}
+
+/* shrinking: writes the output rows [next, upto) */
+static void cover_flush(cover_t *c, int upto)
+{
+    for (; c->next < upto && c->next < WALL_H; c->next++) {
+        uint32_t *a = c->acc + (size_t)(c->next % WALL_BAND) * WALL_W * 4;
+        for (int x = 0; x < WALL_W; x++, a += 4) {
+            const uint32_t n = a[3] ? a[3] : 1;
+            put565(c, x, c->next, a[0] / n, a[1] / n, a[2] / n);
+            a[0] = a[1] = a[2] = a[3] = 0;
+        }
+    }
+}
+
+/* n pixels of source row sy from column sx at px, step bytes apart: R G B, or B G R with bgr */
+static void cover_pixels(cover_t *c, int sx, int sy, int n, const uint8_t *px, int step, bool bgr)
+{
+    const int ri = bgr ? 2 : 0, bi = bgr ? 0 : 2;
+    if (c->enlarge) {
+        if (sy < c->cy || sy >= c->cy + c->ch) return;
+        uint8_t *row = c->crop + (size_t)(sy - c->cy) * c->cw * 3;
+        for (int i = 0; i < n; i++, px += step) {
+            const int x = sx + i - c->cx;
+            if (x < 0 || x >= c->cw) continue;
+            row[x * 3] = px[ri], row[x * 3 + 1] = px[1], row[x * 3 + 2] = px[bi];
+        }
+        return;
+    }
+    const int y = (int)floorf(sy * c->s - c->offy);
+    if (y < c->next || y >= WALL_H || y >= c->next + WALL_BAND) return; /* cut off (the band always holds it) */
+    uint32_t *row = c->acc + (size_t)(y % WALL_BAND) * WALL_W * 4;
+    for (int i = 0; i < n && sx + i < c->src_w; i++, px += step) {
+        const uint16_t x = c->x0[sx + i];
+        if (x == 0xFFFF) continue;
+        uint32_t *a = row + x * 4;
+        a[0] += px[ri], a[1] += px[1], a[2] += px[bi], a[3]++;
+    }
+}
+
+/* the rows above source row sy are complete */
+static void cover_row_start(cover_t *c, int sy)
+{
+    if (!c->enlarge) cover_flush(c, out_row(c, sy));
+}
+
+/* the last rows; enlarging: every output pixel sampled bilinearly from the kept part */
+static void cover_finish(cover_t *c)
+{
+    if (!c->enlarge) {
+        cover_flush(c, WALL_H);
+        return;
+    }
+    for (int y = 0; y < WALL_H; y++) {
+        float fy = (y + 0.5f + c->offy) / c->s - 0.5f - c->cy;
+        fy = fy < 0 ? 0 : fy > c->ch - 1 ? c->ch - 1 : fy;
+        const int y0 = (int)fy, y1 = y0 + 1 < c->ch ? y0 + 1 : y0;
+        const float wy = fy - y0;
+        const uint8_t *r0 = c->crop + (size_t)y0 * c->cw * 3, *r1 = c->crop + (size_t)y1 * c->cw * 3;
+        for (int x = 0; x < WALL_W; x++) {
+            float fx = (x + 0.5f + c->offx) / c->s - 0.5f - c->cx;
+            fx = fx < 0 ? 0 : fx > c->cw - 1 ? c->cw - 1 : fx;
+            const int x0 = (int)fx, x1 = x0 + 1 < c->cw ? x0 + 1 : x0;
+            const float wx = fx - x0;
+            uint32_t v[3];
+            for (int k = 0; k < 3; k++) {
+                const float top = r0[x0 * 3 + k] + (r0[x1 * 3 + k] - r0[x0 * 3 + k]) * wx;
+                const float bot = r1[x0 * 3 + k] + (r1[x1 * 3 + k] - r1[x0 * 3 + k]) * wx;
+                v[k] = (uint32_t)(top + (bot - top) * wy + 0.5f);
+            }
+            put565(c, x, y, v[0], v[1], v[2]);
+        }
+    }
+}
+
+typedef struct {
+    FILE *f;
+    cover_t *c;
+    int top; /* the source row the current MCU row starts at */
+} jpeg_ctx_t;
+
+static size_t jpeg_in(JDEC *jd, uint8_t *buf, size_t n)
+{
+    jpeg_ctx_t *x = jd->device;
+    if (buf) return fread(buf, 1, n, x->f);
+    return fseek(x->f, (long)n, SEEK_CUR) == 0 ? n : 0;
+}
+
+static int jpeg_out(JDEC *jd, void *bitmap, JRECT *r)
+{
+    jpeg_ctx_t *x = jd->device;
+    if (r->top != x->top) { /* MCUs come left to right, then the next MCU row */
+        x->top = r->top;
+        cover_row_start(x->c, r->top);
+    }
+    const int w = r->right - r->left + 1;
+    const uint8_t *px = bitmap; /* JD_FORMAT 0: 3 bytes a pixel, B G R in LVGL's copy of TJpgDec (tjpgd.c) */
+    for (int y = r->top; y <= r->bottom; y++, px += w * 3) cover_pixels(x->c, r->left, y, w, px, 3, true);
+    return 1;
+}
+
+static decode_t wall_jpeg(const char *path, cover_t *c)
+{
+    FILE *f = fopen(path, "rb");
+    void *pool = malloc(4096); /* TJpgDec's work area (lv_tjpgd.c uses the same size) */
+    if (!f || !pool) {
+        if (f) fclose(f);
+        free(pool);
+        return f ? NO_MEMORY : REFUSED;
+    }
+    JDEC jd;
+    jpeg_ctx_t x = {.f = f, .c = c, .top = -1};
+    JRESULT rc = jd_prepare(&jd, jpeg_in, pool, 4096, &x);
+    decode_t r = REFUSED;
+    if (rc == JDR_FMT3) {
+        ESP_LOGW(TAG, "%s: progressive JPEG, save it as baseline (standard)", path);
+    } else if (rc != JDR_OK) {
+        ESP_LOGW(TAG, "%s: not a JPEG the launcher reads (TJpgDec %d)", path, (int)rc);
+    } else if ((r = cover_begin(c, jd.width, jd.height, path)) == DECODED) {
+        rc = jd_decomp(&jd, jpeg_out, 0);
+        if (rc != JDR_OK) {
+            ESP_LOGW(TAG, "%s: JPEG error %d", path, (int)rc);
+            cover_free(c);
+            r = REFUSED;
+        }
+    }
+    fclose(f);
+    free(pool);
+    return r;
+}
+
+static decode_t wall_png(const char *path, cover_t *c)
+{
+    lv_draw_buf_t *img;
+    unsigned w, h; /* png_load checks the room for the file and the decoded picture together (mem_check) */
+    decode_t r = png_load(path, WALL_PNG_FILE, 8192, WALL_PNG_PX, true, &img, &w, &h);
+    if (r != DECODED) return r;
+    if ((r = cover_begin(c, (int)w, (int)h, path)) == DECODED) {
+        for (unsigned y = 0; y < h; y++) { /* the alpha is ignored: a wallpaper is opaque */
+            cover_row_start(c, (int)y);
+            cover_pixels(c, 0, (int)y, (int)w, img->data + (size_t)y * img->header.stride, 4, false);
+        }
+    }
+    lv_draw_buf_destroy(img);
+    return r;
+}
+
+/* the wallpaper file on the card, its signature (0 = none) */
+static uint32_t wall_file(char *path, size_t len)
+{
+    for (size_t i = 0; i < sizeof(WALL_FILES) / sizeof(WALL_FILES[0]); i++) {
+        snprintf(path, len, "%s/%s", CONFIG_BSP_SD_MOUNT_POINT, WALL_FILES[i]);
+        const uint32_t s = file_sig(path);
+        if (s) return (s ^ (uint32_t)(i + 1) * 2654435761u) | 1;
+    }
+    return 0;
+}
+
+static void load_wall(job_t *j)
+{
+    char p[L5_FILES_PATH];
+    const uint32_t s = wall_file(p, sizeof(p));
+    if (s == j->wall_sig) return;
+    const int64_t t0 = esp_timer_get_time();
+    cover_t c;
+    decode_t r = REFUSED;
+    if (s) {
+        const size_t n = strlen(p);
+        r = n > 4 && !strcasecmp(p + n - 4, ".png") ? wall_png(p, &c) : wall_jpeg(p, &c);
+#ifndef ESP_PLATFORM
+        if (l5_appicon_test_nomem > 0) { /* PC test: as if it ran out of memory */
+            l5_appicon_test_nomem--;
+            if (r == DECODED) cover_free(&c);
+            r = NO_MEMORY;
+        }
+#endif
+    }
+    if (r == NO_MEMORY && ++j->wall_tries < MAX_TRIES) { /* the old wallpaper stays and the signature too: again */
+        ESP_LOGW(TAG, "%s: no memory for the wallpaper, try %d of %d", p, j->wall_tries, MAX_TRIES);
+        j->retry = true;
+        return;
+    }
+    if (r == NO_MEMORY) ESP_LOGW(TAG, "%s: no memory for the wallpaper, read again when it changes", p);
+    j->wall_tries = 0;
+    j->wall_sig = s; /* refused: none, until the file changes */
+    j->wall_new = true;
+    if (r != DECODED) return;
+    cover_finish(&c);
+    j->wall = c.out;
+    c.out = NULL;
+    ESP_LOGI(TAG, "wallpaper %s: %dx%d px, scaled %d/1000 (%d ms)", p, c.src_w, c.src_h, (int)(c.s * 1000),
+             (int)((esp_timer_get_time() - t0) / 1000));
+    cover_free(&c);
+}
+
+/* draws the part of the wallpaper under the object (absolute screen coordinates), then the scrim over it: the colour
+   and opacity packed in the event's user data (0xRRGGBBAA) */
+static void wall_draw_cb(lv_event_t *e)
+{
+    if (!s_wall) return;
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_area_t a, clip;
+    lv_obj_get_coords(lv_event_get_current_target(e), &a);
+    if (!lv_area_intersect(&clip, &a, &layer->_clip_area)) return;
+    const lv_area_t keep = layer->_clip_area;
+    layer->_clip_area = clip; /* the image covers the whole screen: only this object's part is drawn */
+    lv_draw_image_dsc_t d;
+    lv_draw_image_dsc_init(&d);
+    d.src = s_wall;
+    const lv_area_t full = {0, 0, WALL_W - 1, WALL_H - 1};
+    lv_draw_image(layer, &d, &full);
+    const uint32_t scrim = (uint32_t)(uintptr_t)lv_event_get_user_data(e);
+    if (scrim & 0xFF) {
+        lv_draw_rect_dsc_t r;
+        lv_draw_rect_dsc_init(&r);
+        r.bg_color = lv_color_hex(scrim >> 8);
+        r.bg_opa = (lv_opa_t)(scrim & 0xFF);
+        lv_draw_rect(layer, &r, &clip);
+    }
+    layer->_clip_area = keep;
+}
+
+bool l5_wallpaper_on(void)
+{
+    return s_wall != NULL;
+}
+
+const lv_draw_buf_t *l5_wallpaper(void)
+{
+    return s_wall;
+}
+
+void l5_wallpaper_remove(lv_obj_t *obj, lv_opa_t opa)
+{
+    lv_obj_remove_event_cb(obj, wall_draw_cb);
+    lv_obj_set_style_bg_opa(obj, opa, 0);
+}
+
+void l5_wallpaper_under(lv_obj_t *obj, lv_color_t scrim, lv_opa_t opa, lv_opa_t opa_without)
+{
+    lv_obj_remove_event_cb(obj, wall_draw_cb); /* once, also when called again after a change */
+    if (!s_wall) {
+        lv_obj_set_style_bg_opa(obj, opa_without, 0);
+        return;
+    }
+    lv_obj_set_style_bg_opa(obj, LV_OPA_TRANSP, 0); /* the border, the chamfer and the children stay */
+    const uint32_t packed = (lv_color_to_u32(scrim) & 0xFFFFFF) << 8 | opa;
+    lv_obj_add_event_cb(obj, wall_draw_cb, LV_EVENT_DRAW_MAIN_BEGIN, (void *)(uintptr_t)packed);
 }
 
 static void load(job_t *j, item_t *it)
@@ -463,6 +858,7 @@ static void load(job_t *j, item_t *it)
 static void drop(job_t *j)
 {
     for (int i = 0; i < j->n; i++) free(j->it[i].px);
+    if (j->wall) lv_draw_buf_destroy(j->wall);
     free(j);
 }
 
@@ -508,6 +904,15 @@ static void apply_cb(void *arg)
             it->px = NULL;
         }
     }
+    bool wall = false; /* the wallpaper came, changed or went */
+    s_wall_tries = j->wall_tries;
+    if (j->wall_new) {
+        s_wall_sig = j->wall_sig;
+        wall = s_wall || j->wall;
+        if (s_wall) lv_draw_buf_destroy(s_wall); /* drawn only by the LVGL task, which is here */
+        s_wall = j->wall;
+        j->wall = NULL;
+    }
     if (j->retry && !s_retry && (s_retry = lv_timer_create(retry_cb, RETRY_MS, NULL)) != NULL) {
         lv_timer_set_repeat_count(s_retry, 1);
     }
@@ -524,6 +929,12 @@ static void apply_cb(void *arg)
         l5_ui_render_views(L5_VIEW_BIT(L5_VIEW_HOME) | L5_VIEW_BIT(L5_VIEW_SD)); /* HOME asks for a new look */
         if (!repainted) l5_boot_screen_icons();
     }
+    if (wall && !shown) { /* HOME's panel and the bootscreen show it */
+        if (l5_ui_view() == L5_VIEW_HOME) l5_home_keep_place();
+        l5_ui_render_views(L5_VIEW_BIT(L5_VIEW_HOME));
+        l5_boot_screen_icons();
+    }
+    if (wall) l5_ui_wallpaper_changed(); /* the idle clock */
     if (again && !s_running) start();
 }
 
@@ -538,6 +949,7 @@ static void post(job_t *j)
 
 static void run(job_t *j)
 {
+    load_wall(j);
     for (int i = 0; i < j->n; i++) load(j, &j->it[i]);
 }
 
@@ -623,10 +1035,8 @@ static void start(void)
         it->about_sig = e->about_sig;
         it->tries = e->tries;
     }
-    if (!j->n) {
-        free(j);
-        return;
-    }
+    j->wall_sig = s_wall_sig; /* the wallpaper is looked at every time, also without apps */
+    j->wall_tries = s_wall_tries;
     s_running = true;
     s_again = false;
     if (!s_task && xTaskCreatePinnedToCore(worker, "l5_icons", 8192, NULL, 2, &s_task, 1) != pdPASS) s_task = NULL;

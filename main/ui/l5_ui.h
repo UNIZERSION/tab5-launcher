@@ -217,6 +217,17 @@ lv_obj_t *l5_appicon_create(lv_obj_t *parent, const char *project, int32_t box, 
 /* the icon's colours, evened out for the launcher: accent (vivid: ring, buttons, frames) and tint (the hue most of the
    icon has, for backgrounds); false without an icon or when it is grey. Either pointer may be NULL. */
 bool l5_appicon_colors(const char *project, lv_color_t *accent, lv_color_t *tint);
+/* ---------- the wallpaper (l5_appicon.c: the icon worker reads it) ---------- */
+/* <card>/wallpaper.jpg (baseline JPEG, any size from 640 x 360) or wallpaper.png (up to 1920 x 1080 px), cut to fill
+   the screen. l5_wallpaper_under(obj): obj shows the part of the wallpaper under it with a scrim of colour scrim at
+   opacity opa over it (the theme's panel colour: dark themes darken it, Daylight lightens it), in place of its
+   background (bg_opa opa_without when there is none); call it again after a change.
+   l5_wallpaper_remove(obj, opa): back to its own background at that opacity. */
+bool l5_wallpaper_on(void);
+const lv_draw_buf_t *l5_wallpaper(void); /* RGB565 1280 x 720, NULL without one (the PC tests read its pixels) */
+void l5_wallpaper_under(lv_obj_t *obj, lv_color_t scrim, lv_opa_t opa, lv_opa_t opa_without);
+void l5_wallpaper_remove(lv_obj_t *obj, lv_opa_t opa);
+void l5_ui_wallpaper_changed(void); /* l5_ui.c: the idle clock follows a new wallpaper or none */
 /* the boot app's accent (0xRRGGBB): from its icon, before the icon is read the one kept from the last start (NVS),
    else fallback */
 uint32_t l5_appicon_boot_accent(uint32_t fallback);

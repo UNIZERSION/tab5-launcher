@@ -116,6 +116,109 @@ def disc(w, h):
     return pixel
 
 
+# baseline JPEG (4:4:4, quantization 1, the standard Huffman tables) of an image made of flat 8 x 8 blocks: every
+# block is its DC value and an end of block, so no DCT is needed (the test wallpapers are flat rectangles)
+DC_BITS = [[0, 1, 5, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0], [0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0]]
+DC_VALS = [list(range(12)), list(range(12))]
+AC_BITS = [[0, 2, 1, 3, 3, 2, 4, 3, 5, 5, 4, 4, 0, 0, 1, 0x7d], [0, 2, 1, 2, 4, 4, 3, 4, 7, 5, 4, 4, 0, 1, 2, 0x77]]
+AC_VALS = [bytes.fromhex(
+    '01020300041105122131410613516107227114328191a1082342b1c11552d1f02433627282090a161718191a25262728292a3435363738'
+    '393a434445464748494a535455565758595a636465666768696a737475767778797a838485868788898a92939495969798999aa2a3a4a5'
+    'a6a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae1e2e3e4e5e6e7e8e9eaf1f2f3f4f5f6f7f8f9fa'),
+    bytes.fromhex(
+    '000102031104052131061241510761711322328108144291a1b1c109233352f0156272d10a162434e125f11718191a262728292a3536'
+    '3738393a434445464748494a535455565758595a636465666768696a737475767778797a82838485868788898a92939495969798999a'
+    'a2a3a4a5a6a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae2e3e4e5e6e7e8e9eaf2f3f4f5f6f7f8f9fa')]
+
+
+def huff_codes(bits, vals):
+    codes, code, k = {}, 0, 0
+    for length in range(1, 17):
+        for _ in range(bits[length - 1]):
+            codes[vals[k]] = (code, length)
+            code += 1
+            k += 1
+        code <<= 1
+    return codes
+
+
+def jpeg_file(path, w, h, color, progressive=False):
+    """color(x, y) of the 8 x 8 block at x, y (multiples of 8) as (r, g, b)"""
+    dc = [huff_codes(DC_BITS[i], DC_VALS[i]) for i in range(2)]
+    ac = [huff_codes(AC_BITS[i], list(AC_VALS[i])) for i in range(2)]
+    out, acc, nbits = bytearray(), 0, 0
+
+    def put(code, length):
+        nonlocal acc, nbits
+        acc = acc << length | code
+        nbits += length
+        while nbits >= 8:
+            nbits -= 8
+            byte = acc >> nbits & 0xFF
+            out.append(byte)
+            if byte == 0xFF:
+                out.append(0)
+
+    prev = [0, 0, 0]
+    for by in range(0, h, 8):
+        for bx in range(0, w, 8):
+            r, g, b = color(bx, by)
+            ycc = (0.299 * r + 0.587 * g + 0.114 * b, 128 - 0.168736 * r - 0.331264 * g + 0.5 * b,
+                   128 + 0.5 * r - 0.418688 * g - 0.081312 * b)
+            for c in range(3):
+                v = int(round(8 * (ycc[c] - 128)))
+                diff, prev[c] = v - prev[c], v
+                size = abs(diff).bit_length()
+                put(*dc[c > 0][size])
+                if size:
+                    put(diff if diff > 0 else diff + (1 << size) - 1, size)
+                put(*ac[c > 0][0])  # end of block
+    if nbits:
+        put((1 << (8 - nbits)) - 1, 8 - nbits)
+
+    def seg(marker, body):
+        return bytes([0xFF, marker]) + struct.pack('>H', len(body) + 2) + body
+
+    data = b'\xff\xd8'
+    data += seg(0xDB, b'\x00' + bytes([1] * 64)) + seg(0xDB, b'\x01' + bytes([1] * 64))
+    data += seg(0xC2 if progressive else 0xC0,
+                struct.pack('>BHHB', 8, h, w, 3) + bytes([1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1]))
+    for cls in range(2):
+        for i in range(2):
+            bits, vals = (DC_BITS, DC_VALS) if cls == 0 else (AC_BITS, AC_VALS)
+            data += seg(0xC4, bytes([cls << 4 | i]) + bytes(bits[i]) + bytes(vals[i]))
+    data += seg(0xDA, bytes([3, 1, 0x00, 2, 0x11, 3, 0x11, 0, 63, 0])) + bytes(out) + b'\xff\xd9'
+    with open(path, 'wb') as f:
+        f.write(data)
+
+
+def wall_art(w, h, flip=False):
+    """red, green and blue thirds (flip: blue, green, red) and a white square in the middle (edges on the 8 x 8 grid)"""
+    thirds = [(200, 40, 40), (40, 180, 60), (40, 60, 200)]
+    if flip:
+        thirds.reverse()
+
+    def color(x, y):
+        if w * 3 // 8 <= x < w * 5 // 8 and h * 2 // 8 <= y < h * 6 // 8:
+            return (250, 250, 250)
+        return thirds[min(2, x * 3 // w)]
+    return color
+
+
+def sky_art(w, h):
+    """for the snapshots: an evening sky, a sun and hills"""
+    def color(x, y):
+        t, u = x / w, y / h
+        sun = math.hypot(x - w * 0.7, y - h * 0.42) < h * 0.11
+        hill = y > h * (0.68 + 0.08 * math.sin(x / w * 7.0)) or y > h * (0.78 + 0.05 * math.sin(x / w * 13.0 + 1))
+        if hill:
+            return (int(20 + 30 * t), int(25 + 20 * (1 - u)), int(45 + 30 * (1 - t)))
+        if sun:
+            return (255, 196, 120)
+        return (int(40 + 200 * u * (0.6 + 0.4 * t)), int(30 + 90 * u * u), int(110 + 60 * (1 - u)))
+    return color
+
+
 def test_pngs(work):
     """the icons ui/shots.c copies onto its card (work/png): every PNG kind LVGL's lodepng has to convert"""
     folder = os.path.join(work, 'png')
@@ -130,6 +233,14 @@ def test_pngs(work):
             ('disc120p', 120, 120, disc, 'palette', False),    # palette with transparency
             ('wide1100', 1100, 8, disc, 'rgba8', False)):      # wider than 1024 px: refused
         png_file(os.path.join(folder, name + '.png'), w, h, art(w, h), mode, interlace)
+    # wallpapers: a 1600 x 900 JPEG (shrunk to 1280 x 720), the same as PNG, a progressive JPEG header (refused),
+    # a picture too small to fill the screen (refused)
+    jpeg_file(os.path.join(folder, 'wall1600.jpg'), 1600, 900, wall_art(1600, 900))
+    jpeg_file(os.path.join(folder, 'wallprog.jpg'), 1600, 896, wall_art(1600, 896), progressive=True)
+    png_file(os.path.join(folder, 'wall1280.png'), 1280, 720, wall_art(1280, 720, flip=True), 'rgb8')
+    jpeg_file(os.path.join(folder, 'wall320.jpg'), 320, 176, wall_art(320, 176))
+    jpeg_file(os.path.join(folder, 'wall1024.jpg'), 1024, 576, wall_art(1024, 576))  # enlarged 1.25x
+    png_file(os.path.join(folder, 'wallsky.png'), 1280, 720, sky_art(1280, 720), 'rgb8')  # smooth, for the snapshots
 
 
 def build(cc, work):

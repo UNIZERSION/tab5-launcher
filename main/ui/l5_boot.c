@@ -279,6 +279,7 @@ void l5_boot_screen_icons(void)
     B.tile = tile(B.ring, B.app);
     for (int k = 0; k < MAX_CHIPS && B.dot[k]; k++) dot_fill(B.dot[k], B.dot_app[k]);
     lv_obj_set_style_bg_color(B.el, top_color(B.app), 0); /* the icon's tint, or none since it went */
+    l5_wallpaper_under(B.el, L5C.boot_bot, 140, LV_OPA_COVER); /* a wallpaper on the card replaces the gradient */
     if (B.secs) lv_obj_set_style_text_color(B.secs, L5P.accent, 0); /* CFG > UI color APP: a new accent */
     lv_obj_invalidate(B.ring);
 }
@@ -352,6 +353,7 @@ void l5_boot_screen(void)
     lv_obj_t *el = l5_sys_show(top_color(app), L5C.boot_bot); /* .boot, tinted by the app's icon */
     memset(&B, 0, sizeof(B));
     B.el = el;
+    l5_wallpaper_under(el, L5C.boot_bot, 140, LV_OPA_COVER); /* <card>/wallpaper.jpg / .png: in place of the gradient */
     B.up = true;
     B.angle = 270 + 360; /* empty until the countdown starts */
     corners(el);

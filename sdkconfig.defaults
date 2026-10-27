@@ -54,6 +54,8 @@ CONFIG_LV_USE_DEMO_WIDGETS=n
 CONFIG_LV_USE_CANVAS=y
 # App icons from the card (main/ui/l5_appicon.c): LVGL's PNG decoder, about 25 KB
 CONFIG_LV_USE_LODEPNG=y
+# The wallpaper as JPEG (main/ui/l5_appicon.c): LVGL's TJpgDec, baseline JPEG
+CONFIG_LV_USE_TJPGD=y
 # Two LVGL draw threads render in parallel on both cores. LVGL's FreeRTOS layer uses semaphores
 # (not task notifications): esp_lvgl_port also wakes the LVGL task with task notifications.
 CONFIG_LV_OS_FREERTOS=y

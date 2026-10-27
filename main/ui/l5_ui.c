@@ -153,13 +153,19 @@ static void clock_show(bool on)
         l5_ui_covered(on);
         s_clock_cover = on;
     }
-    lv_obj_set_style_bg_opa(s_veil, on ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     lv_obj_set_style_bg_color(s_veil, L5_BLACK, 0);
+    if (on) l5_wallpaper_under(s_veil, L5_BLACK, 170, LV_OPA_COVER); /* the wallpaper, dark (white digits), else black */
+    else l5_wallpaper_remove(s_veil, LV_OPA_TRANSP);
     lv_obj_set_flag(C.box, LV_OBJ_FLAG_HIDDEN, !on);
     if (on) {
         C.minute = -1;
         clock_paint();
     }
+}
+
+void l5_ui_wallpaper_changed(void)
+{
+    if (l5_ui_idle_clock()) clock_show(true);
 }
 
 int l5_ui_dim_level(int bright, bool clock)

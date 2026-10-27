@@ -760,7 +760,7 @@ static int dither_test(void)
 static void put_png(const char *rel, const char *name)
 {
     char src[400], dst[400];
-    snprintf(src, sizeof(src), "png/%s.png", name);
+    snprintf(src, sizeof(src), strchr(name, '.') ? "png/%s" : "png/%s.png", name); /* "wall1600.jpg" as it is */
     snprintf(dst, sizeof(dst), "%s/%s", CARD, rel);
     FILE *in = fopen(src, "rb"), *out = in ? fopen(dst, "wb") : NULL;
     char b[4096];
@@ -1223,6 +1223,172 @@ static int look_test(void)
 }
 
 /* ---------- the Tab5 Keyboard: what each part of the launcher does with a key ---------- */
+
+/* ---------- the wallpaper (l5_appicon.c) ---------- */
+
+/* a pixel of the wallpaper buffer as 8-bit R, G, B */
+static void wall_px(int x, int y, int rgb[3])
+{
+    const lv_draw_buf_t *b = l5_wallpaper();
+    const uint16_t c = *(const uint16_t *)(b->data + (size_t)y * b->header.stride + (size_t)x * 2);
+    rgb[0] = (c >> 11) * 255 / 31, rgb[1] = ((c >> 5) & 63) * 255 / 63, rgb[2] = (c & 31) * 255 / 31;
+}
+
+/* the test art's colours (ui_shots.wall_art) in the wallpaper (kept as they are: the views lay a scrim over it) */
+static bool wall_near(int x, int y, int r, int g, int b)
+{
+    int c[3];
+    wall_px(x, y, c);
+    const int want[3] = {r, g, b};
+    for (int i = 0; i < 3; i++) {
+        if (abs(c[i] - want[i]) > 12) return false;
+    }
+    return true;
+}
+
+/* the screen's pixel x, y after a full redraw */
+static void screen_px(int x, int y, int rgb[3])
+{
+    lv_obj_invalidate(lv_screen_active());
+    lv_obj_invalidate(lv_layer_top());
+    lv_refr_now(NULL);
+    const uint16_t c = s_fb[y * W + x];
+    rgb[0] = (c >> 11) * 255 / 31, rgb[1] = ((c >> 5) & 63) * 255 / 63, rgb[2] = (c & 31) * 255 / 31;
+}
+
+static void wall_set(const char *png_name, const char *as)
+{
+    remove_rel("wallpaper.jpg");
+    remove_rel("wallpaper.png");
+    if (png_name) put_png(as, png_name);
+    l5_appicon_refresh();
+    settle(100);
+}
+
+static void wall_shots(void)
+{
+    icon_card();
+    icon_slots();
+    wall_set("wallsky.png", "wallpaper.png");
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    shot("89_wallpaper_home");
+    l5_boot_screen();
+    settle(1200);
+    shot("90_wallpaper_boot");
+    l5_sys_hide();
+    l5_ui_set_booted(true);
+    l5_ui_go(L5_VIEW_HOME);
+    settle(31000);
+    shot("91_wallpaper_clock");
+    l5_ui_wake();
+    strlcpy(g_cfg.theme, "daylight", sizeof(g_cfg.theme)); /* the light scrim */
+    l5_ui_retheme(L5_THEME_DAYLIGHT);
+    l5_ui_go(L5_VIEW_HOME);
+    shot("92_wallpaper_daylight_home");
+    l5_boot_screen();
+    settle(1200);
+    shot("93_wallpaper_daylight_boot");
+    l5_sys_hide();
+    l5_ui_set_booted(true);
+    strlcpy(g_cfg.theme, "graphite", sizeof(g_cfg.theme));
+    l5_ui_retheme(L5_THEME_GRAPHITE);
+    settle(100);
+    wall_set(NULL, NULL);
+}
+
+static int wall_test(void)
+{
+    int before = s_fails, px[3];
+    mkdir(CARD, 0777);
+    icon_slots();
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    EXPECT(!l5_wallpaper_on(), "wallpaper: none on the card, none shown");
+
+    /* a 1600 x 900 JPEG, shrunk to 1280 x 720: red, green and blue thirds, a white square in the middle */
+    wall_set("wall1600.jpg", "wallpaper.jpg");
+    EXPECT(l5_wallpaper_on() && wall_near(100, 100, 200, 40, 40) && wall_near(1180, 600, 40, 60, 200) &&
+               wall_near(640, 360, 250, 250, 250) && wall_near(300, 600, 200, 40, 40) && wall_near(640, 100, 40, 180, 60),
+           "wallpaper: the JPEG's colours where they belong");
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    screen_px(200, 300, px); /* HOME's panel left of the carousel: the red third */
+    EXPECT(px[0] > px[1] + 40 && px[0] > px[2] + 40, "wallpaper: HOME's panel shows it (%d %d %d)", px[0], px[1], px[2]);
+    l5_boot_screen();
+    screen_px(60, 680, px); /* bottom left, under no text: red, darker */
+    EXPECT(px[0] > px[1] + 25 && px[0] < 120, "wallpaper: the bootscreen shows it darker (%d %d %d)", px[0], px[1], px[2]);
+    l5_sys_hide();
+    l5_ui_set_booted(true);
+    l5_ui_go(L5_VIEW_HOME);
+    settle(31000);
+    screen_px(60, 680, px);
+    EXPECT(l5_ui_idle_clock() && px[0] > px[1] + 10 && px[0] < 80, "wallpaper: under the idle clock, darker (%d %d %d)",
+           px[0], px[1], px[2]);
+    l5_ui_wake();
+
+    /* Daylight: the scrim is the theme's light panel colour, its dark text stays readable */
+    strlcpy(g_cfg.theme, "daylight", sizeof(g_cfg.theme));
+    l5_ui_retheme(L5_THEME_DAYLIGHT);
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    screen_px(200, 300, px);
+    EXPECT(px[1] > 100 && px[0] > px[1] + 20, "wallpaper: Daylight lightens it (%d %d %d)", px[0], px[1], px[2]);
+    strlcpy(g_cfg.theme, "graphite", sizeof(g_cfg.theme));
+    l5_ui_retheme(L5_THEME_GRAPHITE);
+    settle(100);
+
+    /* out of memory: read again 10 s later */
+    wall_set(NULL, NULL);
+    l5_appicon_test_nomem = 1;
+    wall_set("wall1600.jpg", "wallpaper.jpg");
+    const bool none = !l5_wallpaper_on();
+    settle(10100);
+    EXPECT(none && l5_wallpaper_on(), "wallpaper: after running out of memory it was %s, then not read again",
+           none ? "not shown" : "shown");
+    l5_appicon_test_nomem = 0;
+    l5_ui_wake();
+
+    /* a PNG; with a JPEG next to it the JPEG is shown */
+    wall_set("wall1280.png", "wallpaper.png");
+    EXPECT(l5_wallpaper_on() && wall_near(100, 100, 40, 60, 200) && wall_near(640, 360, 250, 250, 250),
+           "wallpaper: a 1280 x 720 PNG (its thirds the other way round)");
+    put_png("wallpaper.jpg", "wall1600.jpg");
+    l5_appicon_refresh();
+    settle(100);
+    EXPECT(wall_near(100, 100, 200, 40, 40), "wallpaper: wallpaper.jpg before wallpaper.png");
+
+    /* refused: progressive JPEG, too small to fill the screen; then none: HOME's own panel again */
+    wall_set("wallprog.jpg", "wallpaper.jpg");
+    EXPECT(!l5_wallpaper_on(), "wallpaper: a progressive JPEG is refused");
+    wall_set("wall320.jpg", "wallpaper.jpg");
+    EXPECT(!l5_wallpaper_on(), "wallpaper: a 320 x 176 picture is refused");
+    /* enlarged (1024 x 576, 1.25 x): the colours where they belong, and smooth: at the edge between the red and the
+       green third (source block 336 | 344, output about 430) a pixel between the two, not a hard step */
+    wall_set("wall1024.jpg", "wallpaper.jpg");
+    bool blend = false;
+    for (int x = 424; l5_wallpaper_on() && x < 436; x++) {
+        int c[3];
+        wall_px(x, 100, c);
+        blend |= abs(c[0] - 200) > 10 && abs(c[0] - 40) > 10;
+    }
+    EXPECT(l5_wallpaper_on() && wall_near(100, 100, 200, 40, 40) && wall_near(640, 360, 250, 250, 250) &&
+               wall_near(1180, 600, 40, 60, 200) && blend,
+           "wallpaper: a 1024 x 576 picture enlarged smoothly (a blended edge: %d)", blend);
+    wall_set("wall1600.jpg", "wallpaper.jpg");
+    wall_set(NULL, NULL);
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    screen_px(200, 300, px);
+    EXPECT(!l5_wallpaper_on() && abs(px[0] - px[2]) < 12, "wallpaper: removed, HOME's panel is grey again (%d %d %d)",
+           px[0], px[1], px[2]);
+    int fails = s_fails - before;
+    printf(fails ? "wallpaper: FAILED %d\n"
+                 : "wallpaper: JPEG shrunk and cut, enlarged smoothly, PNG, JPEG first, HOME, bootscreen, idle clock, "
+                   "Daylight, out of memory, progressive and too small refused, removed PASSED\n",
+           fails);
+    return fails ? 1 : 0;
+}
 
 static bool s_key_shots; /* the snapshot run: four scenes of the key test are saved too */
 
@@ -1969,6 +2135,7 @@ int main(int argc, char **argv)
         r = theme_test() || r;
         r = icon_test() || r;
         r = look_test() || r;
+        r = wall_test() || r;
         return dither_test() || r;
     }
     home_shots();
@@ -2035,6 +2202,7 @@ int main(int argc, char **argv)
     int r = keys_test();
     icon_shots();
     look_shots();
+    wall_shots();
     printf("%d shots\n", s_shots);
     return r;
 }

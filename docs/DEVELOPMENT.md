@@ -554,6 +554,36 @@ Measurement of the card's parts (render in ms, two runs of 3 frames per variant;
   STORAGE now (DISPLAY ends in Idle clock). Snapshots 83-88: HOME, bootscreen and CFG with APP, the idle clock,
   HOME and bootscreen in Daylight.
 
+### Wallpaper from the card (`l5_appicon.c`, 2026-10-27, not flashed)
+
+- **Files:** `<card>/wallpaper.jpg`, `.jpeg` or `.png`, the first that exists (`wall_file()`; its signature includes
+  which one). The icon worker looks at it on every job (every HOME build, SD .bin panel), also without apps.
+- **Decoding:** JPEG with LVGL's TJpgDec (`CONFIG_LV_USE_TJPGD`, `tjpgd.c` with `-Os`; LVGL's copy outputs B, G, R and
+  has no descaling, `JD_USE_SCALE 0`), streamed from the file with a 4 KB work area: progressive JPEGs give
+  `JDR_FMT3` and are refused. PNG through the icons' `png_load()` (whole, so at most 1920 x 1080 and 4 MB; it
+  checks that PSRAM has room for the decoded picture next to the file first). Before the output buffers the free
+  PSRAM is checked too (`psram_fits`: largest block and total, 512 KB margin); running out of memory keeps the
+  old wallpaper and retries like the icons (10 s, three times, `wall_tries`).
+- **Cover scaling** (`cover_t`): scale = the larger of 1280 / w and 720 / h (at most 2: a picture smaller than
+  640 x 360 is refused), centred. Shrinking: each source pixel adds to the output pixel it falls in, in a band of
+  40 output rows (820 KB); rows are written once the decoder is past them (TJpgDec's MCU rows, PNG rows), so a
+  4000 x 3000 photo needs no buffer of its decoded size. Enlarging: the shown part of the picture is kept (at
+  most 2.8 MB) and sampled bilinearly at the end. Output RGB565 with a 4 x 4 ordered dither (no bands in a smooth
+  sky), not darkened. Measured on the PC: 1600 x 900 JPEG 28 ms, 1280 x 720 PNG 22 ms, 1024 x 576 JPEG 32 ms.
+- **Drawing:** `l5_wallpaper_under(obj, scrim, opa, opa_without)` gives the object a `LV_EVENT_DRAW_MAIN_BEGIN`
+  callback that draws the whole-screen image with the layer's clip narrowed to the object (so only its part is
+  drawn), then a scrim of the theme's colour (packed 0xRRGGBBAA in the user data), and sets its `bg_opa` to 0
+  (border, chamfer and children stay); without a wallpaper `bg_opa` goes back to `opa_without`. HOME's panel
+  (`L5_PANEL`, 120), the bootscreen (`boot_bot`, 140, in place of the gradient and the icon tint) and the idle
+  clock's veil (black, 170). The theme's colour darkens it in Graphite and Midnight and lightens it in Daylight,
+  where the text is dark (the first version darkened it in every theme). A new or removed wallpaper rebuilds HOME, repaints the bootscreen and
+  the clock (`l5_ui_wallpaper_changed`). The buffer is swapped only by the LVGL task, outside a refresh.
+- **Tests:** `shots --taps` wall_test with JPEGs written by `ui_shots.jpeg_file()` (a baseline JPEG encoder for
+  flat 8 x 8 blocks: DC only, no DCT): 1600 x 900 shrunk with its colours where they belong, HOME / bootscreen /
+  clock pixels, Daylight lighter, out of memory then read 10 s later, a PNG, wallpaper.jpg first, a 1024 x 576
+  JPEG enlarged with a blended edge, progressive and 320 x 176 refused, removed. Snapshots 89-93 (a smooth PNG sky,
+  also in Daylight).
+
 ### Keyboard shortcuts as on a computer (2026-10-27, not flashed)
 
 - **Key map** (`main/l5_kbd_map.c`, out of `l5_kbd.c` so the PC tests run it): F1..F12 (HID 0x3A..0x45) are
@@ -1346,6 +1376,7 @@ Port of `L5.connect`, `L5.pickWifi` and `L5.wifiMenu` (app.js) in `main/ui/l5_wi
 | + review fixes: one icon worker, retries after running out of memory, 16-bit PNGs refused, Polish capitals (not flashed) | 1,933,552 B (0x1D80F0) | 160 KB (8%) |
 | + colours from the app icons (tints, APP accent kept in NVS), idle clock with the launcher hidden under it (not flashed) | 1,938,624 B (0x1D94C0) | 155 KB (8%) |
 | + keyboard shortcuts as on a computer: Alt+1..5, F1 help, F2, F5, text cursor, Polish letters with Alt, SD find / cut, PMAN keys, bootscreen keys (not flashed) | 1,943,568 B (0x1DA810) | 150 KB (7%) |
+| + wallpaper from the card (JPEG with TJpgDec at -Os, PNG; cover scaling in a band or bilinear, dithered, theme scrims, memory checks and retries) (not flashed) | 1,953,552 B (0x1DCF10) | 140 KB (7%) |
 
 The Wi-Fi stack and OTA fit in the 2 MB partition: the launcher, `L5_POOL_START` and the fixed areas do not
 change, and the launcher partition did not have to be enlarged. The largest parts: host esp_hosted 2.12.6
