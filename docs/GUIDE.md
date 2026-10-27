@@ -13,7 +13,7 @@ Tab5 Launcher is an app launcher for the M5Stack Tab5: it keeps apps (firmware) 
 - Has Wi-Fi through the built-in ESP32-C6 chip, an on-screen keyboard, and settings saved on the SD card.
 - The RESET button always takes you back to the launcher, and an app that keeps restarting is stopped automatically.
 
-This guide describes version 0.1.0 from 2026-10-19.
+This guide describes the launcher as it is in the source code on GitHub (27.10.2026). The 0.1.0 release from 2026-10-19 does not have the new look yet (boot screen ring, side menu, HOME carousel, themes), nor the 1 Big + 2 Small scheme, app icons, colors from the icons, the wallpaper, the idle clock and the new keyboard shortcuts: they come with the next release.
 
 ## Requirements and compatibility
 
@@ -472,7 +472,7 @@ No known bugs so far.
 
 **Not yet tested on the device**
 
-These features are in the launcher but have not been tested on the Tab5 yet: resuming an OTA download after the connection drops (including RETRY), CANCEL during a download, \[UPDATE ALL\], favorites and ADD LINK, the APP ONLY / APP + DATA choice and Avoid SPIFFS. In the SD tab: copy and paste, rename, new folder and text preview. In the boot-loop guard: BOOT AGAIN and RESET while the "… was stopped" dialog is open. Restored from the build of 2026-10-20 and not tested on the device yet: the M5Stack Tab5 Keyboard and its keys in the whole launcher, the dithered (band-free) gradients of the panels and buttons, putting config.conf back, WHY NO WI-FI, the NO DISPLAY stop, apps that wait until they are chosen, installing with little internal RAM. New on 2026-10-26 and not tested on the device yet: the boot screen with the countdown ring and the other apps' chips, the side menu, and the HOME carousel (swiping on the Tab5's touch panel, its drawing speed).
+These features are in the launcher but have not been tested on the Tab5 yet: resuming an OTA download after the connection drops (including RETRY), CANCEL during a download, \[UPDATE ALL\], favorites and ADD LINK, the APP ONLY / APP + DATA choice and Avoid SPIFFS. In the SD tab: copy and paste, rename, new folder and text preview. In the boot-loop guard: BOOT AGAIN and RESET while the "… was stopped" dialog is open. Restored from the build of 2026-10-20 and not tested on the device yet: the M5Stack Tab5 Keyboard and its keys in the whole launcher, the dithered (band-free) gradients of the panels and buttons, putting config.conf back, WHY NO WI-FI, the NO DISPLAY stop, apps that wait until they are chosen, installing with little internal RAM. New on 2026-10-26 and not tested on the device yet: the boot screen with the countdown ring and the other apps' chips, the side menu, the HOME carousel (swiping on the Tab5's touch panel, its drawing speed), the themes and the 1 Big + 2 Small scheme. New on 2026-10-27 and not tested on the device yet: app icons and descriptions from the SD card, colors from the icons (APP accent), the wallpaper (how long a large photo takes to appear), the idle clock, and the new keyboard shortcuts (whether the Tab5 Keyboard sends the F-keys and the right Alt).
 
 **What comes next**
 
