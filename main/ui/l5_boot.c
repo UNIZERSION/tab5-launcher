@@ -172,6 +172,11 @@ static void stop_cb(lv_event_t *e)
     B.line = l;
 }
 
+void l5_boot_screen_hold(void)
+{
+    stop_cb(NULL);
+}
+
 static void enter_cb(lv_event_t *e)
 {
     (void)e;

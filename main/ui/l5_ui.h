@@ -129,6 +129,7 @@ void l5_ota_paint_wifi(void);         /* OTA follows the Wi-Fi state */
 /* ---------- bootscreen (l5_boot.c) ---------- */
 void l5_boot_screen(void);   /* L5.bootScreen: the app in a ring that counts down, LAUNCHER, START NOW, other apps */
 void l5_boot_screen_stop(void);  /* its countdown stops: another system screen replaces it (l5_sys.c) */
+void l5_boot_screen_hold(void);  /* its countdown stops as after a tap, the bootscreen stays (the PC sends files) */
 bool l5_boot_screen_key(const l5_key_t *k); /* the bootscreen is up: any key enters the launcher (true) */
 void l5_boot_screen_icons(void); /* app icons were loaded (l5_appicon.c): the tile and chips show them */
 void l5_enter_launcher(void);    /* from the bootscreen into HOME */

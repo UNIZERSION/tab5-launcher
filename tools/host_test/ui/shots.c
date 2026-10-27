@@ -1942,6 +1942,12 @@ static void boot_keys(void)
     l5_boot_screen();
     KEY(ESC);
     EXPECT(!lv_obj_get_child_count(l5_ui_sys()) && l5_ui_view() == L5_VIEW_HOME, "bootscreen: Esc = LAUNCHER");
+    l5_boot_screen(); /* a file from the PC (l5_link.c) holds the countdown like a tap */
+    l5_boot_screen_hold();
+    settle(6000);
+    EXPECT(label_with(boot_el(), "COUNTDOWN STOPPED") != NULL && shots_boots == boots + 2,
+           "bootscreen: l5_boot_screen_hold stops the countdown");
+    KEY(ESC);
     l5_ui_set_booted(true);
 }
 

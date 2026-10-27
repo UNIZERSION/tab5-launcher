@@ -10,6 +10,7 @@
 #include "l5_board.h"
 #include "l5_config.h"
 #include "l5_kbd.h"
+#include "l5_link.h"
 #include "l5_ptable.h"
 #include "l5_slots.h"
 #include "l5_wifi.h"
@@ -85,4 +86,5 @@ void app_main(void)
     l5_board_reveal(g_cfg.bright); /* the backlight comes on only when the first frame is shown */
     l5_board_unlock();
     l5_kbd_init(); /* M5Stack Tab5 Keyboard on the side port, own I2C bus: looked for every 2 s */
+    l5_link_start(); /* files from the PC to the card over the USB cable (tools/sd_put.py) */
 }

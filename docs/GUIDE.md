@@ -195,6 +195,22 @@ The SD tab browses the card and installs `.bin` apps from it into a slot.
 - **Putting an old config.conf back:** RENAME a saved copy (e.g. `config.conf.bak` in the card root) to `config.conf`, or PASTE a `config.conf` into the card root. The launcher writes a new config.conf at every change of a setting, so the name is usually taken: the "Replace config.conf?" dialog asks first. **REPLACE** puts the file in place and its settings apply at once ("config.conf put back"); **CANCEL** leaves the files as they are. A file that is not valid JSON goes in place, but the settings stay as they are ("config.conf is not valid").
 - **VIEW** shows .txt, .conf, .json, .cfg, .ini, .md, .csv, .log, and .py files: at most the first 64 KB, scrollable with your finger. Non-ASCII letters (e.g. Polish diacritics) in names and in text are displayed correctly.
 
+### Copying files from a computer over USB
+
+Without a card reader, a computer can copy files to the card in the Tab5 over the USB-C cable while the launcher runs (since 27.10.2026). You need Python with pyserial (`pip install pyserial`) and `tools/sd_put.py` from this repository. Replace `COM3` with your Tab5's port:
+
+```
+python tools/sd_put.py COM3 put photo.jpg /wallpaper.jpg
+python tools/sd_put.py COM3 put icon.png /apps/orbit_drum/icon.png about.txt /apps/orbit_drum/about.txt
+python tools/sd_put.py COM3 rm /old_file.bin
+```
+
+- The path after each file is where it goes on the card; missing folders are made. A file with the same name is replaced.
+- Each file is checked before it replaces the one on the card: a broken transfer leaves the card as it was.
+- The boot screen's countdown stops as soon as the computer sends something, so the launcher does not start an app in the middle.
+- About 60 KB/s: a 5 MB app takes about 1.5 minutes. The Tab5 must be in the launcher, not in an app.
+- In Git Bash, start the line with `MSYS_NO_PATHCONV=1`, or the card paths become Windows paths.
+
 ## OTA: installing from the internet
 
 OTA installs apps from the same Tab5 firmware catalog as M5Launcher (launcherhub) or from your own link. The files themselves are downloaded straight from the M5Stack server, and the launcher does not send any device identifier.
