@@ -9,7 +9,9 @@
    stops it, its chips and keys, and the dithered gradient of CFG's columns (run.py runs it).
    shots --keys: the M5Stack Tab5 Keyboard typed into the launcher (l5_keys.c and the views, dialogs, menus, text
    viewer, progress, on-screen keyboard and Charge Mode), as in the original build of 20.10.2026 (run.py runs it; the
-   snapshots end with four of its scenes). */
+   snapshots end with four of its scenes).
+   App icons from the card (l5_appicon.c): scenes 80..82 after the key scenes, icon_test in --taps; their PNG
+   files come from ui_shots.py (test_pngs). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +24,7 @@
 #include "l5_slots.h"
 #include "l5_ui.h"
 #include "l5_wifi.h"
+#include "nvs.h"
 
 extern int shots_backlight; /* ui_stubs.c: last l5_board_backlight() */
 extern bool shots_sd_ready;
@@ -393,7 +396,7 @@ static void idle_for(uint32_t ms, bool *dimmed)
 
 static int idle_test(void)
 {
-    const int dim_level = 70 * 12 / 100 + 1;
+    const int dim_level = l5_ui_dim_level(70, g_cfg.idleClock); /* the idle clock is on: 17 */
     g_cfg.bright = 70;
     g_cfg.dim = 30;
     g_cfg.screenOff = 60;
@@ -711,7 +714,8 @@ static int charge_state_test(void)
 static int dither_test(void)
 {
     static const int top[3] = {0x1d, 0x1f, 0x23}, bot[3] = {0x14, 0x15, 0x18};
-    const int x0 = L5_RAIL_W + 40, y0 = 640, y1 = 700, py = L5_PANEL_Y; /* the column spans py .. py + 695 */
+    /* the empty foot of INSTALL & STORAGE (DISPLAY's ends in Idle clock); every column spans py .. py + 695 */
+    const int x0 = L5_RAIL_W + L5_GAP + (L5_FULL_W - 2 * 13) / 3 + 13 + 40, y0 = 600, y1 = 688, py = L5_PANEL_Y;
     l5_ui_go(L5_VIEW_CFG);
     settle(300);
     lv_obj_invalidate(lv_screen_active());
@@ -740,13 +744,481 @@ static int dither_test(void)
     }
     if (flat) {
         fails++;
-        printf("  FAIL: %d of %d blocks under DISPLAY have one color (not dithered)\n", flat, (y1 - y0) / 4);
+        printf("  FAIL: %d of %d blocks under INSTALL & STORAGE have one color (not dithered)\n", flat, (y1 - y0) / 4);
     }
     if (worst > 1.0) {
         fails++;
         printf("  FAIL: a 4 x 4 block averages %.2f steps off the gradient\n", worst);
     }
     printf(fails ? "dither: FAILED\n" : "dither: CFG's dark gradient dithered, blocks within %.2f of the ideal PASSED\n", worst);
+    return fails ? 1 : 0;
+}
+
+/* ---------- app icons from the card (l5_appicon.c) ---------- */
+
+/* one of the PNG files ui_shots.py writes into png/ (test_pngs) onto the card */
+static void put_png(const char *rel, const char *name)
+{
+    char src[400], dst[400];
+    snprintf(src, sizeof(src), "png/%s.png", name);
+    snprintf(dst, sizeof(dst), "%s/%s", CARD, rel);
+    FILE *in = fopen(src, "rb"), *out = in ? fopen(dst, "wb") : NULL;
+    char b[4096];
+    size_t n;
+    while (out && (n = fread(b, 1, sizeof(b), in)) > 0) fwrite(b, 1, n, out);
+    if (out) fclose(out);
+    if (in) fclose(in);
+    if (!out) printf("  test PNG %s not copied to %s\n", name, rel);
+}
+
+static void remove_rel(const char *rel)
+{
+    char p[400];
+    snprintf(p, sizeof(p), "%s/%s", CARD, rel);
+    remove(p);
+}
+
+static void rmdir_rel(const char *rel)
+{
+    char p[400];
+    snprintf(p, sizeof(p), "%s/%s", CARD, rel);
+    rmdir(p);
+}
+
+/* "1 Big + 2 Small": ORBIT in app0, PSTX1 and Spotify in the small slots */
+static void icon_slots(void)
+{
+    boot_slots(1);
+    g_slots.n = 3;
+    g_slots.app0_kb = 7552;
+    g_slots.slot_kb = 2560;
+    g_slots.scheme = "1 Big + 2 Small";
+    slot_set(1, "PSTX1_Serwis_1.1.1", "pstx1_serwis", "1.1.1", "SD", "2026-10-22", "Oct 22 2026", 2010000);
+    slot_set(2, "Spotify", "tab5_spotify", "0.4.8", "SD", "2026-10-23", "Oct 23 2026", 2343024);
+}
+
+/* "Odtwarzacz Spotify Connect z okładkami, kolejką i tekstami piosenek na Tab5": longer than 63 bytes, Polish */
+#define SPOTIFY_ABOUT "Odtwarzacz Spotify Connect z ok\xC5\x82" "adkami, kolejk\xC4\x85 i tekstami piosenek na Tab5\n"
+
+static void icon_card(void)
+{
+    mkdir(CARD, 0777);
+    dir("apps");
+    dir("apps/orbit_drum");
+    dir("apps/pstx1_serwis");
+    dir("apps/tab5_spotify");
+    put_png("apps/orbit_drum/icon.png", "orbit512"); /* RGB, 2 x 2 blocks, then kept as it is */
+    put("apps/orbit_drum/about.txt", "\xEF\xBB\xBF\r\n  Drum machine \xC2\xB7 16 steps  \r\nsecond line\r\n");
+    put_png("apps/pstx1_serwis/icon.png", "badge");  /* wider than high, transparent */
+    put_png("apps/tab5_spotify/icon.png", "disc64"); /* enlarged */
+    put("apps/tab5_spotify/about.txt", SPOTIFY_ABOUT);
+}
+
+/* canvases of a given width under o (the bootscreen's tile: 152, its chips: 44) */
+static int canvases(lv_obj_t *o, int32_t w)
+{
+    int n = lv_obj_check_type(o, &lv_canvas_class) && lv_obj_get_width(o) == w;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(o); i++) n += canvases(lv_obj_get_child(o, (int32_t)i), w);
+    return n;
+}
+
+/* the first label under o whose text starts with prefix (HOME's "BOOT <name>" names the card in the middle) */
+static lv_obj_t *label_obj_with(lv_obj_t *o, const char *prefix)
+{
+    if (lv_obj_check_type(o, &lv_label_class) && !strncmp(lv_label_get_text(o), prefix, strlen(prefix))) return o;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(o); i++) {
+        lv_obj_t *l = label_obj_with(lv_obj_get_child(o, (int32_t)i), prefix);
+        if (l) return l;
+    }
+    return NULL;
+}
+
+static const char *label_with(lv_obj_t *o, const char *prefix)
+{
+    lv_obj_t *l = label_obj_with(o, prefix);
+    return l ? lv_label_get_text(l) : NULL;
+}
+
+/* pixel (x, y) of an app icon drawn into box x box without rounded corners: B, G, R, A; false without the icon */
+static bool icon_px(const char *project, int32_t box, int x, int y, uint8_t out[4])
+{
+    lv_obj_t *cv = l5_appicon_create(lv_screen_active(), project, box, 0);
+    if (!cv) return false;
+    const lv_draw_buf_t *b = lv_canvas_get_draw_buf(cv);
+    memcpy(out, b->data + (size_t)y * b->header.stride + (size_t)x * 4, 4);
+    lv_obj_delete(cv);
+    return true;
+}
+
+static bool px_near(const uint8_t bgra[4], int r, int g, int b)
+{
+    return bgra[3] == 255 && abs(bgra[2] - r) < 7 && abs(bgra[1] - g) < 7 && abs(bgra[0] - b) < 7;
+}
+
+static void icon_shots(void)
+{
+    icon_card();
+    icon_slots();
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100); /* the worker's result arrives with lv_async_call: HOME is drawn again */
+    shot("80_icons_home");
+    l5_boot_screen();
+    settle(1200);
+    shot("81_icons_boot");
+    l5_sys_hide();
+    l5_ui_set_booted(true);
+    dir("apps/Aurora-Player"); /* the project the PC's l5_bin_probe reports */
+    put_png("apps/Aurora-Player/icon.png", "orbit300i");
+    /* "Źródło muzyki i filmów": Polish capitals at the start of the line on the 132 px emblem */
+    put("apps/Aurora-Player/about.txt", "\xC5\xB9r\xC3\xB3" "d\xC5\x82o muzyki i film\xC3\xB3w");
+    l5_ui_go(L5_VIEW_SD);
+    l5_sd_after_op(CARD, "Aurora-Player-1.3.21.bin");
+    settle(100);
+    shot("82_icons_sd");
+}
+
+extern int l5_appicon_test_nomem; /* l5_appicon.c on the PC: this many decodes run out of memory */
+
+static int icon_test(void)
+{
+    int before = s_fails;
+    char up[64];
+    l5_files_upper(up, sizeof(up), "za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87 g\xC4\x99\xC5\x9Bl\xC4\x85 ja\xC5\xBA\xC5\x84");
+    EXPECT(!strcmp(up, "ZA\xC5\xBB\xC3\x93\xC5\x81\xC4\x86 G\xC4\x98\xC5\x9AL\xC4\x84 JA\xC5\xB9\xC5\x83"),
+           "icons: Polish capitals \"%s\"", up);
+    l5_files_upper(up, 4, "\xC5\xBC\xC5\xBC"); /* room for one letter of two bytes: the second is not cut in half */
+    EXPECT(!strcmp(up, "\xC5\xBB"), "icons: capitals cut inside a letter (%d bytes)", (int)strlen(up));
+
+    icon_card();
+    icon_slots();
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    const char *about = l5_appicon_about("orbit_drum");
+    EXPECT(l5_appicon_has("orbit_drum") && l5_appicon_has("pstx1_serwis") && l5_appicon_has("tab5_spotify"),
+           "icons: not every icon on the card was loaded");
+    EXPECT(about && !strcmp(about, "Drum machine \xC2\xB7 16 steps"), "icons: about.txt read as \"%s\"", about ? about : "-");
+    EXPECT(!l5_appicon_about("pstx1_serwis"), "icons: an about.txt that is not there");
+    about = l5_appicon_about("tab5_spotify");
+    const size_t al = about ? strlen(about) : 0;
+    EXPECT(al && al < L5_ABOUT_LEN && ((uint8_t)about[al - 1] & 0xC0) != 0xC0 && !strncmp(about, SPOTIFY_ABOUT, al),
+           "icons: a long Polish about.txt line was not cut on a letter (%d bytes)", (int)al);
+    EXPECT(!l5_appicon_has("../apps") && !l5_appicon_has("a/b") && !l5_appicon_has(""),
+           "icons: a project name left the apps folder");
+
+    /* fitted, rounded, colors kept */
+    lv_obj_t *cv = l5_appicon_create(lv_screen_active(), "pstx1_serwis", 152, 34);
+    lv_draw_buf_t *b = cv ? lv_canvas_get_draw_buf(cv) : NULL;
+    EXPECT(b && b->header.w == 152 && b->header.h == 91, "icons: 200 x 120 in 152 px is %d x %d",
+           b ? (int)b->header.w : 0, b ? (int)b->header.h : 0);
+    if (b) {
+        const uint8_t *c = b->data + 45 * b->header.stride + 20 * 4; /* B, G, R, A: the badge's teal */
+        EXPECT(px_near(c, 0, 150, 136), "icons: badge pixel %d %d %d alpha %d", c[2], c[1], c[0], c[3]);
+        EXPECT(b->data[3] == 0, "icons: the transparent corner has alpha %d", b->data[3]);
+    }
+    if (cv) lv_obj_delete(cv);
+    cv = l5_appicon_create(lv_screen_active(), "orbit_drum", 152, 34);
+    b = cv ? lv_canvas_get_draw_buf(cv) : NULL;
+    if (b) {
+        const uint8_t *m = b->data + 76 * b->header.stride + 76 * 4;
+        EXPECT(b->header.w == 152 && b->header.h == 152 && b->data[3] == 0 && px_near(m, 245, 245, 245),
+               "icons: RGB icon %dx%d, corner alpha %d, center %d %d %d", (int)b->header.w, (int)b->header.h,
+               b->data[3], m[2], m[1], m[0]);
+        const uint8_t *e = b->data + 76 * b->header.stride; /* the middle of the left edge: inside, not rounded */
+        EXPECT(e[3] == 255, "icons: the left edge has alpha %d", e[3]);
+        lv_obj_delete(cv);
+    } else {
+        EXPECT(false, "icons: no canvas for orbit_drum");
+    }
+
+    /* new icons keep the card in the middle: app2 is there, the boot app changes to app0 without a rebuild, a new
+       icon arrives (a rebuild for new slots would bring the boot app to the middle) */
+    g_slots.boot = 2;
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    g_slots.boot = 0;
+    put_png("apps/orbit_drum/icon.png", "disc64");
+    l5_appicon_refresh();
+    settle(100);
+    const char *mid = label_with(lv_screen_active(), "BOOT ");
+    EXPECT(mid && (strstr(mid, "Spotify") || strstr(mid, "SPOTIFY")), "icons: new icons moved the carousel (%s)", mid ? mid : "-");
+    put_png("apps/orbit_drum/icon.png", "orbit512");
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+
+    /* the card changes: the next HOME build looks again */
+    remove_rel("apps/orbit_drum/about.txt");
+    put("apps/pstx1_serwis/icon.png", "not a PNG");
+    put_png("apps/tab5_spotify/icon.png", "wide1100");
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    EXPECT(!l5_appicon_about("orbit_drum"), "icons: a removed about.txt is still shown");
+    EXPECT(!l5_appicon_has("pstx1_serwis"), "icons: a broken PNG still shows the old icon");
+    EXPECT(!l5_appicon_has("tab5_spotify"), "icons: an icon wider than 1024 px was loaded");
+    put_png("apps/pstx1_serwis/icon.png", "disc120p");
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    uint8_t px[4] = {0};
+    EXPECT(icon_px("pstx1_serwis", 120, 60, 60, px) && px_near(px, 30, 215, 96), "icons: palette PNG center %d %d %d %d",
+           px[2], px[1], px[0], px[3]);
+    EXPECT(icon_px("pstx1_serwis", 120, 0, 0, px) && px[3] == 0, "icons: palette PNG corner alpha %d", px[3]);
+
+    /* out of memory: the old icon stays, the card is looked at again after 10 s, three times at most */
+    l5_appicon_test_nomem = 1;
+    put_png("apps/pstx1_serwis/icon.png", "badge");
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    const bool kept = icon_px("pstx1_serwis", 120, 60, 60, px) && px_near(px, 30, 215, 96);
+    settle(10100);
+    EXPECT(kept && icon_px("pstx1_serwis", 152, 20, 45, px) && px_near(px, 0, 150, 136),
+           "icons: after running out of memory the icon was %s, then not read again", kept ? "kept" : "dropped");
+    l5_appicon_test_nomem = 3;
+    put_png("apps/pstx1_serwis/icon.png", "disc120p");
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    settle(10100);
+    settle(10100);
+    const int left = l5_appicon_test_nomem;
+    settle(10100);
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    EXPECT(left == 0 && !l5_appicon_has("pstx1_serwis"), "icons: %d of 3 tries left, icon %s after giving up", left,
+           l5_appicon_has("pstx1_serwis") ? "shown" : "gone");
+    l5_appicon_test_nomem = 0;
+    l5_ui_wake(); /* 40 s without a touch dimmed the screen */
+
+    /* 16 bits a channel: RGBA (64 bits a pixel) is refused before LVGL's lodepng writes it into its 4-byte-a-pixel
+       buffer (that overflowed the heap); gray + alpha (32 bits) fits and is converted */
+    dir("apps/deep_app");
+    put_png("apps/deep_app/icon.png", "orbit96_16");
+    dir("apps/gray_app");
+    put_png("apps/gray_app/icon.png", "disc64ga16");
+    (void)l5_appicon_has("deep_app"); /* asked for: looked for on the card */
+    (void)l5_appicon_has("gray_app");
+    settle(100);
+    EXPECT(!l5_appicon_has("deep_app"), "icons: a PNG with 16-bit RGBA was decoded");
+    EXPECT(icon_px("gray_app", 64, 32, 32, px) && px_near(px, 146, 146, 146), "icons: 16-bit gray PNG center %d %d %d %d",
+           px[2], px[1], px[0], px[3]);
+    EXPECT(icon_px("gray_app", 64, 0, 0, px) && px[3] == 0, "icons: 16-bit gray PNG corner alpha %d", px[3]);
+    remove_rel("apps/deep_app/icon.png");
+    remove_rel("apps/gray_app/icon.png");
+
+    /* the bootscreen shows the initials first and the icon when the worker is done; PSTX1 gets another file (the
+       same one again is no change after giving up) */
+    put_png("apps/pstx1_serwis/icon.png", "badge");
+    dir("apps/late_app");
+    put_png("apps/late_app/icon.png", "orbit300i");
+    slot_set(0, "Late App", "late_app", "1.0", "SD", "2026-10-26", "Oct 26 2026", 1000000);
+    l5_boot_screen(); /* l5_appicon_create asks for it: the worker's result is queued */
+    const int first = canvases(boot_el(), 152);
+    settle(50);
+    EXPECT(first == 0 && canvases(boot_el(), 152) == 1, "icons: bootscreen tile canvases %d then %d", first,
+           canvases(boot_el(), 152));
+    lv_obj_t *chips_row = lv_obj_get_child(lv_obj_get_child(boot_el(), -1), -1);
+    EXPECT(chips_row && canvases(chips_row, 44) == 1, "icons: %d chip icons (PSTX1 has one, Spotify none)",
+           chips_row ? canvases(chips_row, 44) : -1);
+    EXPECT(icon_px("late_app", 96, 48, 48, px) && px_near(px, 245, 245, 245), "icons: late icon center %d %d %d %d",
+           px[2], px[1], px[0], px[3]);
+    l5_sys_hide();
+    l5_ui_set_booted(true);
+
+    /* the SD tab's .bin panel looks again: an icon copied after the first look appears (the PC's probe says
+       every .bin is Aurora-Player); interlaced */
+    put_size("icon-test.bin", 4096);
+    l5_ui_go(L5_VIEW_SD);
+    l5_sd_after_op(CARD, "icon-test.bin");
+    settle(100);
+    const bool had = l5_appicon_has("Aurora-Player");
+    dir("apps/Aurora-Player");
+    put_png("apps/Aurora-Player/icon.png", "orbit300i");
+    l5_sd_after_op(CARD, "icon-test.bin");
+    settle(100);
+    EXPECT(!had && l5_appicon_has("Aurora-Player"), "icons: the SD panel did not pick up a new icon (before %d)", had);
+    EXPECT(icon_px("Aurora-Player", 256, 128, 128, px) && px_near(px, 245, 245, 245),
+           "icons: interlaced PNG center %d %d %d %d", px[2], px[1], px[0], px[3]);
+    remove_rel("icon-test.bin");
+    remove_rel("apps/Aurora-Player/icon.png");
+    l5_ui_go(L5_VIEW_HOME);
+
+    remove_rel("apps/late_app/icon.png");
+    remove_rel("apps/orbit_drum/icon.png");
+    remove_rel("apps/pstx1_serwis/icon.png");
+    remove_rel("apps/tab5_spotify/icon.png");
+    remove_rel("apps/tab5_spotify/about.txt");
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    EXPECT(!l5_appicon_has("pstx1_serwis") && !l5_appicon_has("late_app") && !l5_appicon_has("Aurora-Player"),
+           "icons: removed icons are still shown");
+    static const char *const dirs[] = {"apps/late_app", "apps/orbit_drum", "apps/pstx1_serwis", "apps/tab5_spotify",
+                                       "apps/Aurora-Player", "apps/deep_app", "apps/gray_app", "apps"};
+    for (size_t i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) rmdir_rel(dirs[i]); /* the key test lists the card */
+    int fails = s_fails - before;
+    printf(fails ? "icons: FAILED %d\n"
+                 : "icons: Polish capitals, RGB / palette / 16-bit gray / interlaced PNGs, 16-bit RGBA refused, "
+                   "fitted, rounded, about.txt, "
+                   "carousel kept, changes, broken and too big PNGs, out of memory, bootscreen, SD PASSED\n",
+           fails);
+    return fails ? 1 : 0;
+}
+
+/* ---------- colours from the app icons, the idle clock (27.10.2026) ---------- */
+
+static uint32_t rgb_of(lv_color_t c)
+{
+    return lv_color_to_u32(c) & 0xFFFFFF;
+}
+
+/* CFG > UI color APP and the HOME / bootscreen tints, in the snapshots: HOME, bootscreen, CFG, the idle clock */
+static void look_shots(void)
+{
+    icon_card();
+    icon_slots();
+    strlcpy(g_cfg.color, "app", sizeof(g_cfg.color)); /* as the APP swatch does */
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    l5_cfg_accent_follow();
+    settle(100);
+    shot("83_app_accent_home");
+    l5_boot_screen();
+    settle(1200);
+    shot("84_app_accent_boot");
+    l5_sys_hide();
+    l5_ui_set_booted(true);
+    l5_ui_go(L5_VIEW_CFG);
+    shot("85_app_accent_cfg");
+    l5_ui_go(L5_VIEW_HOME);
+    settle(31000); /* Dim time 30 s: the clock */
+    shot("86_idle_clock");
+    l5_ui_wake();
+    strlcpy(g_cfg.theme, "daylight", sizeof(g_cfg.theme)); /* the tints over a light theme */
+    l5_ui_retheme(L5_THEME_DAYLIGHT);
+    l5_ui_go(L5_VIEW_HOME);
+    shot("87_app_accent_daylight_home");
+    l5_boot_screen();
+    settle(1200);
+    shot("88_app_accent_daylight_boot");
+    l5_sys_hide();
+    l5_ui_set_booted(true);
+    strlcpy(g_cfg.theme, "graphite", sizeof(g_cfg.theme));
+    l5_ui_retheme(L5_THEME_GRAPHITE);
+    settle(100);
+    strlcpy(g_cfg.color, "red", sizeof(g_cfg.color));
+    l5_theme_set_accent(l5_cfg_accent_hex());
+    l5_rail_apply_accent();
+}
+
+static int look_test(void)
+{
+    int before = s_fails;
+    icon_card();
+    icon_slots();
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    lv_color_t acc, tint;
+    const bool orbit = l5_appicon_colors("orbit_drum", &acc, &tint);
+    EXPECT(orbit && acc.red > 200 && acc.green > 100 && acc.green < 180 && acc.blue < 80,
+           "look: ORBIT's accent #%06lx is not its orange ring", (unsigned long)rgb_of(acc));
+    EXPECT(orbit && tint.blue > tint.red + 40 && tint.blue > tint.green + 30,
+           "look: ORBIT's tint #%06lx is not its blue background", (unsigned long)rgb_of(tint));
+    EXPECT(l5_appicon_colors("pstx1_serwis", &acc, NULL) && acc.green > 150 && acc.blue > 150 && acc.red < 80,
+           "look: the badge's accent #%06lx is not teal", (unsigned long)rgb_of(acc));
+
+    /* CFG > UI color APP: the boot app's accent, kept for the next start; another boot app, another accent */
+    strlcpy(g_cfg.color, "app", sizeof(g_cfg.color));
+    l5_cfg_accent_follow();
+    settle(100);
+    l5_appicon_colors("orbit_drum", &acc, NULL);
+    EXPECT(rgb_of(L5P.accent) == rgb_of(acc), "look: APP gave #%06lx, the icon #%06lx", (unsigned long)rgb_of(L5P.accent),
+           (unsigned long)rgb_of(acc));
+    nvs_handle_t h;
+    char prj[33] = "";
+    size_t len = sizeof(prj);
+    uint32_t kept = 0;
+    nvs_open("l5", NVS_READONLY, &h);
+    nvs_get_str(h, "acc_prj", prj, &len);
+    nvs_get_u32(h, "acc_rgb", &kept);
+    EXPECT(!strcmp(prj, "orbit_drum") && (kept & 0xFFFFFF) == rgb_of(acc),
+           "look: kept for the next start: %s #%06lx", prj, (unsigned long)(kept & 0xFFFFFF));
+    g_slots.boot = 2; /* Spotify */
+    l5_cfg_accent_follow();
+    settle(100);
+    l5_appicon_colors("tab5_spotify", &acc, NULL);
+    EXPECT(rgb_of(L5P.accent) == rgb_of(acc), "look: another boot app kept the accent #%06lx",
+           (unsigned long)rgb_of(L5P.accent));
+
+    /* a boot app whose first decode ran out of memory: the kept colour stays until the retry reads the icon */
+    dir("apps/fresh_app");
+    put_png("apps/fresh_app/icon.png", "badge");
+    slot_set(1, "Fresh", "fresh_app", "1.0", "SD", "2026-10-27", "Oct 27 2026", 1000000);
+    g_slots.boot = 1;
+    l5_appicon_test_nomem = 1;
+    l5_appicon_refresh();
+    settle(100);
+    l5_cfg_accent_follow();
+    len = sizeof(prj);
+    nvs_get_str(h, "acc_prj", prj, &len);
+    EXPECT(!strcmp(prj, "tab5_spotify"), "look: a decode waiting for its retry overwrote the kept colour (%s)", prj);
+    settle(10100);
+    l5_cfg_accent_follow();
+    len = sizeof(prj);
+    nvs_get_str(h, "acc_prj", prj, &len);
+    nvs_get_u32(h, "acc_rgb", &kept);
+    l5_appicon_colors("fresh_app", &acc, NULL);
+    EXPECT(!strcmp(prj, "fresh_app") && (kept & 0xFFFFFF) == rgb_of(acc) && rgb_of(L5P.accent) == rgb_of(acc),
+           "look: after the retry kept %s #%06lx, accent #%06lx", prj, (unsigned long)(kept & 0xFFFFFF),
+           (unsigned long)rgb_of(L5P.accent));
+    remove_rel("apps/fresh_app/icon.png");
+    rmdir_rel("apps/fresh_app");
+    icon_slots();
+
+    /* the bootscreen's gradient starts in the boot app's tint */
+    g_slots.boot = 0;
+    l5_boot_screen();
+    l5_appicon_colors("orbit_drum", NULL, &tint);
+    EXPECT(rgb_of(lv_obj_get_style_bg_color(boot_el(), 0)) == rgb_of(l5_mix(tint, L5C.boot_top, 90)),
+           "look: the bootscreen's top is #%06lx", (unsigned long)rgb_of(lv_obj_get_style_bg_color(boot_el(), 0)));
+    l5_sys_hide();
+    l5_ui_set_booted(true);
+    strlcpy(g_cfg.color, "red", sizeof(g_cfg.color));
+    l5_theme_set_accent(l5_cfg_accent_hex());
+    l5_rail_apply_accent();
+    EXPECT(rgb_of(L5P.accent) == 0xe3171f, "look: red again is #%06lx", (unsigned long)rgb_of(L5P.accent));
+
+    /* the idle clock: on the dimmed screen with Idle clock on, not with it off; waking hides it */
+    l5_ui_go(L5_VIEW_HOME);
+    settle(31000);
+    lv_obj_t *boot_btn = label_obj_with(lv_screen_active(), "BOOT ");
+    EXPECT(l5_ui_asleep() && l5_ui_idle_clock(), "look: dimmed %d, clock %d", l5_ui_asleep(), l5_ui_idle_clock());
+    EXPECT(boot_btn && !lv_obj_is_visible(boot_btn), "look: HOME is drawn under the clock");
+    EXPECT(l5_ui_dim_level(70, true) == 17 && l5_ui_dim_level(10, true) == 5 && l5_ui_dim_level(4, true) == 4 &&
+           l5_ui_dim_level(70, false) == 9, "look: dim levels %d %d %d %d", l5_ui_dim_level(70, true),
+           l5_ui_dim_level(10, true), l5_ui_dim_level(4, true), l5_ui_dim_level(70, false));
+    l5_ui_wake();
+    EXPECT(!l5_ui_idle_clock() && boot_btn && lv_obj_is_visible(boot_btn), "look: after waking clock %d, HOME %d",
+           l5_ui_idle_clock(), boot_btn && lv_obj_is_visible(boot_btn));
+    settle(31000);
+    l5_boot_screen(); /* a system screen while the clock shows: the launcher comes back when it goes */
+    l5_enter_launcher();
+    EXPECT(boot_btn && lv_obj_is_visible(boot_btn), "look: HOME hidden after the clock and a system screen");
+    g_cfg.idleClock = false;
+    settle(31000);
+    EXPECT(l5_ui_asleep() && !l5_ui_idle_clock(), "look: Idle clock off, the clock shows anyway");
+    l5_ui_wake();
+    g_cfg.idleClock = true;
+
+    remove_rel("apps/orbit_drum/icon.png");
+    remove_rel("apps/orbit_drum/about.txt");
+    remove_rel("apps/pstx1_serwis/icon.png");
+    remove_rel("apps/tab5_spotify/icon.png");
+    remove_rel("apps/tab5_spotify/about.txt");
+    l5_ui_go(L5_VIEW_HOME);
+    settle(100);
+    static const char *const dirs[] = {"apps/orbit_drum", "apps/pstx1_serwis", "apps/tab5_spotify", "apps"};
+    for (size_t i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) rmdir_rel(dirs[i]); /* the key test lists the card */
+    int fails = s_fails - before;
+    printf(fails ? "look: FAILED %d\n"
+                 : "look: icon accent and tint, APP accent kept and following the boot app, bootscreen tint, idle "
+                   "clock PASSED\n",
+           fails);
     return fails ? 1 : 0;
 }
 
@@ -1215,7 +1687,7 @@ static void cfg_keys(void)
     EXPECT(!strcmp(g_cfg.color, "orange"), "CFG: Right on UI color = the next swatch (%s)", g_cfg.color);
     KEY(LEFT);
     KEY(LEFT);
-    EXPECT(!strcmp(g_cfg.color, "magenta"), "CFG: Left goes round to the last swatch (%s)", g_cfg.color);
+    EXPECT(!strcmp(g_cfg.color, "app"), "CFG: Left goes round to the last swatch, APP (%s)", g_cfg.color);
     KEY(RIGHT);
     KEY(DOWN); /* Theme */
     KEY(RIGHT);
@@ -1285,6 +1757,7 @@ static int keys_test(void)
 int main(int argc, char **argv)
 {
     if (argc < 2) return 2;
+    setvbuf(stdout, NULL, _IONBF, 0); /* a crash keeps what was printed before it */
     bool idle = !strcmp(argv[1], "--idle"), taps = !strcmp(argv[1], "--taps"), keys = !strcmp(argv[1], "--keys");
     s_out = argv[1];
     l5_files_root = CARD;
@@ -1311,6 +1784,8 @@ int main(int argc, char **argv)
         r = charge_state_test() || r;
         r = boot_test() || r;
         r = theme_test() || r;
+        r = icon_test() || r;
+        r = look_test() || r;
         return dither_test() || r;
     }
     home_shots();
@@ -1375,6 +1850,8 @@ int main(int argc, char **argv)
     shot("16_big_folder");
     s_key_shots = true; /* 50..53: the focus ring and the keyboard bar */
     int r = keys_test();
+    icon_shots();
+    look_shots();
     printf("%d shots\n", s_shots);
     return r;
 }

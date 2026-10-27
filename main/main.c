@@ -64,7 +64,7 @@ void app_main(void)
     l5_board_set_rotation(g_cfg.rot);
 
     l5_board_lock(0);
-    l5_theme_init(l5_config_accent_hex(&g_cfg), l5_theme_find(g_cfg.theme)); /* unknown: Graphite */
+    l5_theme_init(l5_cfg_accent_hex(), l5_theme_find(g_cfg.theme)); /* APP: the boot app's icon colour */
     l5_ui_init();
     l5_wifi_ui_init();
     l5_keys_init(); /* keys of the Tab5 Keyboard to the views, dialogs and the on-screen keyboard */

@@ -12,6 +12,7 @@ clipboard line and the text viewer without flashing. run.py uses the same progra
 Needs zig cc or gcc (CC overrides) and one firmware build. LVGL objects are kept in %TEMP%/l5_ui_lvgl
 (lvgl_host.py), so later runs only compile the launcher's files. Writes NN_scene.png into the output folder.
 """
+import math
 import os
 import shutil
 import struct
@@ -26,7 +27,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MAIN = os.path.join(lvgl_host.PROJECT, 'main')
 UI_FILES = ['ui/l5_theme.c', 'ui/l5_widgets.c', 'ui/l5_dialogs.c', 'ui/l5_cover.c', 'ui/l5_keyboard.c', 'ui/l5_sd.c',
             'ui/l5_sd_ops.c', 'ui/l5_rail.c', 'ui/l5_ui.c', 'ui/l5_home.c', 'ui/l5_views.c', 'ui/l5_cfg.c',
-            'ui/l5_pman.c', 'ui/l5_ota.c', 'ui/l5_charge.c', 'ui/l5_keys.c', 'ui/l5_dither.c', 'ui/l5_boot.c', 'l5_files.c']
+            'ui/l5_pman.c', 'ui/l5_ota.c', 'ui/l5_charge.c', 'ui/l5_keys.c', 'ui/l5_dither.c', 'ui/l5_boot.c',
+            'ui/l5_appicon.c', 'l5_files.c']
 
 
 def ppm_to_png(ppm, png):
@@ -43,8 +45,97 @@ def ppm_to_png(ppm, png):
                 chunk(b'IDAT', zlib.compress(raw, 6)) + chunk(b'IEND', b''))
 
 
+def png_file(path, w, h, pixel, mode='rgba8', interlace=False):
+    """writes a PNG with zlib (deflate as real cards hold it): mode rgba8, rgb8, rgba16, ga16 (16-bit gray + alpha,
+    gray = Rec. 601 luma) or palette (with tRNS); pixel(x, y) gives (r, g, b, a)"""
+    px = [[pixel(x, y) for x in range(w)] for y in range(h)]
+    palette = []
+    if mode == 'palette':
+        palette = sorted({p for row in px for p in row})
+        index = {p: i for i, p in enumerate(palette)}
+    enc = {'rgba8': lambda p: bytes(p), 'rgb8': lambda p: bytes(p[:3]),
+           'rgba16': lambda p: b''.join(struct.pack('>H', v * 257) for v in p),
+           'ga16': lambda p: struct.pack('>HH', int(0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2] + 0.5) * 257, p[3] * 257),
+           'palette': lambda p: bytes([index[p]])}[mode]
+    ctype, depth = {'rgba8': (6, 8), 'rgb8': (2, 8), 'rgba16': (6, 16), 'ga16': (4, 16), 'palette': (3, 8)}[mode]
+    # Adam7: x start, y start, x step, y step of the seven passes
+    passes = [(0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)] \
+        if interlace else [(0, 0, 1, 1)]
+    raw = bytearray()
+    for x0, y0, dx, dy in passes:
+        xs, ys = range(x0, w, dx), range(y0, h, dy)
+        if not xs or not ys:
+            continue
+        for y in ys:
+            raw += b'\0' + b''.join(enc(px[y][x]) for x in xs)
+
+    def chunk(kind, body):
+        return struct.pack('>I', len(body)) + kind + body + struct.pack('>I', zlib.crc32(kind + body) & 0xffffffff)
+
+    data = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, depth, ctype, 0, 0, int(interlace)))
+    if palette:
+        data += chunk(b'PLTE', b''.join(bytes(p[:3]) for p in palette)) + chunk(b'tRNS', bytes(p[3] for p in palette))
+    data += chunk(b'IDAT', zlib.compress(bytes(raw), 6)) + chunk(b'IEND', b'')
+    with open(path, 'wb') as f:
+        f.write(data)
+
+
+def orbit(w, h):
+    """an opaque square: blue, an orange orbit with eight steps, a white center"""
+    def pixel(x, y):
+        u, v = (x + 0.5) / w - 0.5, (y + 0.5) / h - 0.5
+        r = math.hypot(u, v)
+        a = math.atan2(v, u) * 4 / math.pi
+        if r < 0.12:
+            return (245, 245, 245, 255)
+        if abs(r - 0.33) < 0.025 or (abs(r - 0.33) < 0.06 and abs(a - round(a)) < 0.12):
+            return (255, 138, 28, 255)
+        return (int(18 + 40 * (0.7 - r)), int(28 + 50 * (0.7 - r)), int(70 + 110 * (0.7 - r)), 255)
+    return pixel
+
+
+def badge(w, h):
+    """a teal badge with a white bar on a transparent background"""
+    def pixel(x, y):
+        dx, dy = abs(x + 0.5 - w / 2) - (w / 2 - 30), abs(y + 0.5 - h / 2) - (h / 2 - 30)
+        if math.hypot(max(dx, 0), max(dy, 0)) >= 20:
+            return (0, 0, 0, 0)
+        u, v = (x + 0.5) / w - 0.5, (y + 0.5) / h - 0.5
+        return (255, 255, 255, 255) if abs(v) < 0.08 and abs(u) < 0.3 else (0, 150, 136, 255)
+    return pixel
+
+
+def disc(w, h):
+    """a green disc with a dark arc on a transparent background"""
+    def pixel(x, y):
+        u, v = (x + 0.5) / w - 0.5, (y + 0.5) / h - 0.5
+        r = math.hypot(u, v)
+        if r >= 0.45:
+            return (0, 0, 0, 0)
+        return (20, 20, 20, 255) if v < 0.1 and abs(r - 0.25) < 0.03 else (30, 215, 96, 255)
+    return pixel
+
+
+def test_pngs(work):
+    """the icons ui/shots.c copies onto its card (work/png): every PNG kind LVGL's lodepng has to convert"""
+    folder = os.path.join(work, 'png')
+    os.makedirs(folder, exist_ok=True)
+    for name, w, h, art, mode, interlace in (
+            ('orbit512', 512, 512, orbit, 'rgb8', False),      # RGB without alpha, averaged in 2 x 2 blocks
+            ('orbit300i', 300, 300, orbit, 'rgb8', True),      # interlaced (Adam7)
+            ('orbit96_16', 96, 96, orbit, 'rgba16', False),    # 16-bit RGBA: 64 bits a pixel, refused
+            ('disc64ga16', 64, 64, disc, 'ga16', False),       # 16-bit gray + alpha: 32 bits a pixel, converted
+            ('badge', 200, 120, badge, 'rgba8', False),        # wider than high, transparent
+            ('disc64', 64, 64, disc, 'rgba8', False),          # enlarged
+            ('disc120p', 120, 120, disc, 'palette', False),    # palette with transparency
+            ('wide1100', 1100, 8, disc, 'rgba8', False)):      # wider than 1024 px: refused
+        png_file(os.path.join(folder, name + '.png'), w, h, art(w, h), mode, interlace)
+
+
 def build(cc, work):
-    """compiles the snapshot program into work (its card is work/card); returns the executable"""
+    """compiles the snapshot program into work (its card is work/card) and writes its test PNG files;
+    returns the executable"""
+    test_pngs(work)
     base, objs, _, font_txt = lvgl_host.build(cc)
     idf = os.environ.get('IDF_PATH') or os.path.expanduser(os.path.join('~', 'esp', 'esp-idf-v5.5.2'))
     cjson = os.path.join(idf, 'components', 'json', 'cJSON')

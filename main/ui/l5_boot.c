@@ -1,5 +1,5 @@
-/* The bootscreen (M5Launcher flow): the app that starts after the countdown in the middle, its initials on an accent
-   tile inside a ring that empties as the seconds run out, LAUNCHER and START NOW under it, the other installed apps as
+/* The bootscreen (M5Launcher flow): the app that starts after the countdown in the middle, its icon from the card
+   (l5_appicon.c) or its initials on an accent tile inside a ring that empties as the seconds run out, LAUNCHER and START NOW under it, the other installed apps as
    chips at the bottom. A tap anywhere else stops the countdown. Only LVGL, the slots and the config: the PC snapshots
    (tools/host_test/ui_shots.py) draw it too. l5_sys.c shows the other system screens. */
 #include <stdio.h>
@@ -20,10 +20,14 @@
 #define TICK_MS 40                /* 25 steps a second: the ring's end moves 3-5 degrees a step */
 #define TRACK (L5C.track)
 #define MAX_CHIPS 4
+#define TINT_OPA 90               /* the icon's tint over the top of the gradient: 35 % */
 
 static struct {
     lv_timer_t *timer;
-    lv_obj_t *ring, *secs, *line;
+    lv_obj_t *el, *ring, *secs, *line, *tile;
+    const l5_slot_t *app;          /* in the tile */
+    lv_obj_t *dot[MAX_CHIPS];      /* the chips' round tiles */
+    const l5_slot_t *dot_app[MAX_CHIPS];
     uint32_t start;
     int32_t angle; /* where the remaining arc starts (it ends at the top, 270); 270 + 360 = nothing left */
     unsigned shown; /* seconds in the label */
@@ -200,32 +204,27 @@ static void corners(lv_obj_t *el)
     char t[64];
     snprintf(t, sizeof(t), "TAB5 LAUNCHER \xC2\xB7 v%.16s", esp_app_get_description()->version);
     lv_obj_align(muted(el, &l5_mono_14, t), LV_ALIGN_TOP_LEFT, 40, 30);
-    int n = 0;
-    t[0] = 0;
-    time_t now = time(NULL);
+    char bt[24];
+    l5_battery_text(bt, sizeof(bt)); /* read by the rail a moment ago: no second I2C read before the first frame */
     struct tm tm;
-    localtime_r(&now, &tm);
-    if (tm.tm_year + 1900 >= 2024) n = snprintf(t, sizeof(t), "%02d:%02d \xC2\xB7 ", tm.tm_hour, tm.tm_min);
-    const int pct = l5_rail_battery(); /* read by the rail a moment ago: no second I2C read before the first frame */
-    if (n >= 0 && (size_t)n < sizeof(t)) {
-        if (pct >= 0) {
-            snprintf(t + n, sizeof(t) - n, "BATTERY %d%%", pct);
-        } else {
-            snprintf(t + n, sizeof(t) - n, "USB");
-        }
-    }
+    if (l5_clock_now(&tm)) snprintf(t, sizeof(t), "%02d:%02d \xC2\xB7 %s", tm.tm_hour, tm.tm_min, bt);
+    else snprintf(t, sizeof(t), "%s", bt);
     lv_obj_align(muted(el, &l5_mono_14, t), LV_ALIGN_TOP_RIGHT, -40, 30);
 }
 
-/* the accent tile with the app's initials, a plus without an app */
-static void tile(lv_obj_t *ring, const l5_slot_t *app)
+/* the app's icon on a dark tile, else the accent tile with its initials, a plus without an app */
+static lv_obj_t *tile(lv_obj_t *ring, const l5_slot_t *app)
 {
     lv_obj_t *t = l5_box(ring);
     lv_obj_set_size(t, TILE, TILE);
     lv_obj_center(t);
     lv_obj_set_style_radius(t, 34, 0);
     lv_obj_set_style_bg_opa(t, LV_OPA_COVER, 0);
-    if (app) {
+    lv_obj_t *icon = app ? l5_appicon_create(t, app->project, TILE, 34) : NULL;
+    if (icon) {
+        lv_obj_set_style_bg_color(t, L5_PANEL_3, 0); /* under a transparent icon */
+        lv_obj_center(icon);
+    } else if (app) {
         lv_obj_set_style_bg_color(t, L5P.accent, 0);
         lv_obj_set_style_bg_grad_color(t, L5P.accent_lo, 0);
         lv_obj_set_style_bg_grad_dir(t, LV_GRAD_DIR_VER, 0);
@@ -237,6 +236,39 @@ static void tile(lv_obj_t *ring, const l5_slot_t *app)
         lv_obj_set_style_bg_color(t, L5_PANEL_3, 0);
         lv_obj_center(l5_icon(t, &l5_icon_54, L5_ON_PANEL_MUTED, L5_ICON_PLUS));
     }
+    return t;
+}
+
+/* a chip's round tile: the icon, else the initials */
+static void dot_fill(lv_obj_t *dot, const l5_slot_t *s)
+{
+    lv_obj_clean(dot);
+    lv_obj_t *icon = l5_appicon_create(dot, s->project, 44, LV_RADIUS_CIRCLE);
+    if (icon) {
+        lv_obj_center(icon);
+        return;
+    }
+    char ini[3];
+    l5_cover_initials(s->name, ini);
+    lv_obj_center(l5_label(dot, &l5_orb_b16, L5_ON_PANEL, ini));
+}
+
+/* the top of the bootscreen's gradient: its theme colour with the app icon's tint (l5_appicon.c) over it */
+static lv_color_t top_color(const l5_slot_t *app)
+{
+    lv_color_t tint;
+    return app && l5_appicon_colors(app->project, NULL, &tint) ? l5_mix(tint, L5C.boot_top, TINT_OPA) : L5C.boot_top;
+}
+
+void l5_boot_screen_icons(void)
+{
+    if (!B.up || !B.ring) return;
+    lv_obj_delete(B.tile);
+    B.tile = tile(B.ring, B.app);
+    for (int k = 0; k < MAX_CHIPS && B.dot[k]; k++) dot_fill(B.dot[k], B.dot_app[k]);
+    lv_obj_set_style_bg_color(B.el, top_color(B.app), 0); /* the icon's tint, or none since it went */
+    if (B.secs) lv_obj_set_style_text_color(B.secs, L5P.accent, 0); /* CFG > UI color APP: a new accent */
+    lv_obj_invalidate(B.ring);
 }
 
 static lv_obj_t *big_button(lv_obj_t *parent, const char *icon, const char *text, bool primary, lv_event_cb_t cb)
@@ -285,14 +317,14 @@ static void chips(lv_obj_t *el)
         lv_obj_add_style(c, &L5S.press_fill, LV_STATE_PRESSED);
         lv_obj_set_flex_flow(c, LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(c, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_t *dot = l5_box(c); /* the initials on a small round tile */
+        lv_obj_t *dot = l5_box(c); /* the icon or the initials on a small round tile */
         lv_obj_set_size(dot, 44, 44);
         lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
         lv_obj_set_style_bg_color(dot, L5_PANEL_3, 0);
-        char ini[3];
-        l5_cover_initials(s->name, ini);
-        lv_obj_center(l5_label(dot, &l5_orb_b16, L5_ON_PANEL, ini));
+        B.dot[k] = dot;
+        B.dot_app[k] = s;
+        dot_fill(dot, s);
         lv_obj_t *nm = l5_label(c, &l5_chakra_sb17, L5_ON_PANEL, s->name);
         lv_obj_set_style_max_width(nm, 220, 0);
         lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT);
@@ -305,8 +337,9 @@ void l5_boot_screen(void)
     l5_display_mark("bootscreen"); /* the first frame after start is timed like a tab switch */
     l5_ui_set_booted(false);
     const l5_slot_t *app = l5_slots_boot_app();
-    lv_obj_t *el = l5_sys_show(L5C.boot_top, L5C.boot_bot); /* .boot */
+    lv_obj_t *el = l5_sys_show(top_color(app), L5C.boot_bot); /* .boot, tinted by the app's icon */
     memset(&B, 0, sizeof(B));
+    B.el = el;
     B.up = true;
     B.angle = 270 + 360; /* empty until the countdown starts */
     corners(el);
@@ -315,7 +348,8 @@ void l5_boot_screen(void)
     lv_obj_set_size(B.ring, RING_D, RING_D);
     lv_obj_align(B.ring, LV_ALIGN_TOP_MID, 0, RING_Y);
     lv_obj_add_event_cb(B.ring, ring_draw_cb, LV_EVENT_DRAW_MAIN, NULL);
-    tile(B.ring, app);
+    B.app = app;
+    B.tile = tile(B.ring, app);
 
     /* apps in flash but none chosen (flashed by hand, l5_slots_scan): the launcher opens, as with no app */
     const bool unchosen = !app && l5_slots_used() > 0;

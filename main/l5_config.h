@@ -14,7 +14,7 @@ typedef struct {
     uint8_t bright;       /* backlight %, 5..100 in 5% steps */
     uint16_t dim;         /* idle seconds before dimming, 0 = off (0,10,20,30,60,120,300) */
     uint16_t screenOff;   /* idle seconds before the backlight goes off, 0 = never (0,60,120,300,600,1800) */
-    char color[12];       /* UI accent id, see l5_colors */
+    char color[12];       /* UI accent id, see l5_colors; "app": the boot app's icon colour (CFG, l5_appicon.c) */
     char theme[12];       /* "graphite", "midnight" or "daylight" (ui/l5_theme.c l5_themes; since 26.10.2026) */
     uint16_t rot;         /* 0 = landscape, 180 = landscape inverted */
     bool askSpiffs;       /* ask before installing a SPIFFS image */
@@ -23,6 +23,7 @@ typedef struct {
     bool wifiAuto;        /* connect to saved networks at boot */
     bool deepSleepStart;  /* waking from deep sleep opens the launcher */
     bool btnOnlyStart;    /* enter the launcher only when the screen is touched at reset */
+    bool idleClock;       /* the dimmed screen shows a clock (l5_ui.c; since 27.10.2026) */
     char scheme[12];      /* partition scheme id (data.js schemes) */
 } l5_config_t;
 
@@ -45,6 +46,8 @@ esp_err_t l5_config_remove(void);
 /* the file src (on the card) takes the name L5_CONFIG_PATH, in place of the current one (SD manager: a copy of an old
    config.conf renamed or pasted back). ESP_FAIL: nothing changed, both files are as they were. */
 esp_err_t l5_config_replace(const char *src);
+/* the accent of cfg->color; "app" (and an unknown id) gives the first colour, red: the UI resolves "app" itself
+   (l5_cfg_accent_hex) */
 uint32_t l5_config_accent_hex(const l5_config_t *cfg);
 
 /* OTA favorites, kept in /config.conf as Launcher does: "favorite": [{name, fid, link}]

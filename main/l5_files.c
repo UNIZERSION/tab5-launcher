@@ -170,6 +170,49 @@ bool l5_files_same_name(const char *a, const char *b)
     return (n || !*b) && a[n] == 0;
 }
 
+static size_t utf8_put(char *out, uint32_t c)
+{
+    if (c < 0x80) {
+        out[0] = (char)c;
+        return 1;
+    }
+    if (c < 0x800) {
+        out[0] = (char)(0xC0 | c >> 6);
+        out[1] = (char)(0x80 | (c & 0x3F));
+        return 2;
+    }
+    if (c < 0x10000) {
+        out[0] = (char)(0xE0 | c >> 12);
+        out[1] = (char)(0x80 | (c >> 6 & 0x3F));
+        out[2] = (char)(0x80 | (c & 0x3F));
+        return 3;
+    }
+    out[0] = (char)(0xF0 | c >> 18);
+    out[1] = (char)(0x80 | (c >> 12 & 0x3F));
+    out[2] = (char)(0x80 | (c >> 6 & 0x3F));
+    out[3] = (char)(0x80 | (c & 0x3F));
+    return 4;
+}
+
+void l5_files_upper(char *dst, size_t size, const char *src)
+{
+    if (!size) return;
+    const uint8_t *s = (const uint8_t *)src, *e = s + strlen(src);
+    size_t n = 0;
+    while (s < e) {
+        const uint8_t *at = s;
+        const int32_t c = utf8_get(&s, e);
+        char b[4];
+        size_t k = 1;
+        if (c < 0) b[0] = (char)*at; /* a broken byte stays as it is */
+        else k = utf8_put(b, fold((uint32_t)c));
+        if (n + k >= size) break; /* whole characters only */
+        memcpy(dst + n, b, k);
+        n += k;
+    }
+    dst[n] = 0;
+}
+
 bool l5_files_hidden(const char *name)
 {
     return name[0] == '.' || l5_files_same_name(name, "System Volume Information");

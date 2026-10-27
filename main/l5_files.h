@@ -31,6 +31,9 @@ bool l5_files_free_name(const char *dir, const char *base, char *out, size_t len
 bool l5_files_inside(const char *path, const char *dir);
 /* the files VIEW opens: .txt .conf .json .cfg .ini .md .csv .log .py */
 bool l5_files_is_text(const char *name);
+/* `src` in capitals as FatFs folds names (on the PC: ASCII, Latin-1 and Latin Extended-A, so "zolc" with Polish
+   letters becomes their capitals), cut on a character boundary to fit `size` */
+void l5_files_upper(char *dst, size_t size, const char *src);
 /* not listed: "." and "..", names starting with a dot (macOS "._x.bin" forks), Windows' own folder */
 bool l5_files_hidden(const char *name);
 /* "/sdcard/a/b" -> "/sdcard/a"; false for the root */

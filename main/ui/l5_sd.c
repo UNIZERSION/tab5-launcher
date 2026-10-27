@@ -471,7 +471,9 @@ static void build_side(void)
             num += R.e[k].bin;
         }
         bool app = bi.kind == L5_BIN_APP || bi.kind == L5_BIN_CHIP_REV || bi.kind == L5_BIN_OTHER_CHIP;
-        l5_cover_create(h, 132, name, name, app ? bi.desc.project_name : "", num, true);
+        if (app) l5_appicon_refresh(); /* an icon copied to the card since the last look: drawn again when found */
+        l5_cover_create(h, 132, name, name, app ? bi.desc.project_name : "", num, true,
+                        app ? bi.desc.project_name : NULL); /* the icon of <card>/apps/<project>/ */
         if (app) {
             snprintf(sub, sizeof(sub), "%s \xC2\xB7 v%s", bi.desc.project_name, bi.desc.version);
         } else {

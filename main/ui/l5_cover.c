@@ -1,8 +1,10 @@
 /* Procedural firmware emblem: PCB traces around a chip with the app's initials.
-   Port of U.cover() in tab5-launcher/ui.js, same FNV-1a seed and mulberry32 sequence. */
+   Port of U.cover() in tab5-launcher/ui.js, same FNV-1a seed and mulberry32 sequence.
+   An app with an icon on the card (l5_appicon.c) gets the same background and band with its icon in the middle. */
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include "l5_files.h"
 #include "l5_ui.h"
 
 /* the emblem is dark artwork in every theme (l5_theme.c): its text stays light */
@@ -158,7 +160,8 @@ static void trace(ctx_t *c, float x0, float y0, int dx, int dy)
     circle(c, x3, y3, 3 * f, lv_color_hex(0x0b0c0e));
 }
 
-static void draw(lv_obj_t *canvas, int32_t W, const char *seed, const char *title, const char *sub, int num, bool with_text)
+static void draw(lv_obj_t *canvas, int32_t W, const char *seed, const char *title, const char *sub, int num, bool with_text,
+                 const char *project)
 {
     const int32_t H = W;
     ctx_t c = {.rng = {fnv1a(seed)}, .f = W / 636.0f, .accent = L5P.accent};
@@ -179,61 +182,67 @@ static void draw(lv_obj_t *canvas, int32_t W, const char *seed, const char *titl
         rect(&c, 0, y, W, 1, L5_WHITE, 13);
     }
 
-    const float cs = W * 0.36f, cx = W * 0.5f - cs / 2, cy = H * 0.44f - cs / 2;
-    const int pins = 6;
-    const float step = cs / (pins + 1);
-    for (int i = 1; i <= pins; i++) {
-        if (rnd(&c.rng) < 0.8f) trace(&c, cx + i * step, cy, 0, -1);
-        if (rnd(&c.rng) < 0.8f) trace(&c, cx + i * step, cy + cs, 0, 1);
-        if (rnd(&c.rng) < 0.8f) trace(&c, cx, cy + i * step, -1, 0);
-        if (rnd(&c.rng) < 0.8f) trace(&c, cx + cs, cy + i * step, 1, 0);
-    }
-    const lv_color_t pin = lv_color_hex(0x9ea2a9);
-    for (int i = 1; i <= pins; i++) {
-        rect(&c, cx + i * step - 4 * f, cy - 14 * f, 8 * f, 14 * f, pin, LV_OPA_COVER);
-        rect(&c, cx + i * step - 4 * f, cy + cs, 8 * f, 14 * f, pin, LV_OPA_COVER);
-        rect(&c, cx - 14 * f, cy + i * step - 4 * f, 14 * f, 8 * f, pin, LV_OPA_COVER);
-        rect(&c, cx + cs, cy + i * step - 4 * f, 14 * f, 8 * f, pin, LV_OPA_COVER);
-    }
-
-    lv_draw_rect_dsc_t chip;
-    lv_draw_rect_dsc_init(&chip);
-    chip.bg_opa = LV_OPA_TRANSP; /* the body #34373d -> #16171a is drawn dithered under it: this is the border */
-    chip.border_color = L5_WHITE;
-    chip.border_opa = 46;
-    chip.border_width = (int32_t)(2 * f) < 1 ? 1 : (int32_t)(2 * f);
-    lv_area_t ca = {(int32_t)cx, (int32_t)cy, (int32_t)(cx + cs) - 1, (int32_t)(cy + cs) - 1};
-    l5_grad_draw(&layer, l5_grad_key(lv_color_hex(0x34373d), lv_color_hex(0x16171a), 255), &ca);
-    lv_draw_rect(&layer, &chip, &ca);
-    circle(&c, cx + 18 * f, cy + 18 * f, 6 * f, c.accent);
-
     const cover_fonts_t fn = cover_fonts(W);
-    char ini[3];
-    l5_cover_initials(title && *title ? title : seed, ini);
-    int32_t ty = (int32_t)(cy + cs / 2 + 2 * f) - lv_font_get_line_height(fn.initials) / 2;
-    text(&c, ini, fn.initials, COVER_INK, (int32_t)cx, ty, (int32_t)(cx + cs), LV_TEXT_ALIGN_CENTER);
+    const lv_color_t pin = lv_color_hex(0x9ea2a9);
+    /* the app's icon from the card (l5_appicon.c) takes the place of the chip: between the slot line and the band */
+    const bool icon = project && l5_appicon_has(project);
+    const char *about = project ? l5_appicon_about(project) : NULL;
+    if (about) sub = about;
+    char ini[3]; /* a label's text: alive until lv_canvas_finish_layer(), as the ones below */
+    if (!icon) {
+        const float cs = W * 0.36f, cx = W * 0.5f - cs / 2, cy = H * 0.44f - cs / 2;
+        const int pins = 6;
+        const float step = cs / (pins + 1);
+        for (int i = 1; i <= pins; i++) {
+            if (rnd(&c.rng) < 0.8f) trace(&c, cx + i * step, cy, 0, -1);
+            if (rnd(&c.rng) < 0.8f) trace(&c, cx + i * step, cy + cs, 0, 1);
+            if (rnd(&c.rng) < 0.8f) trace(&c, cx, cy + i * step, -1, 0);
+            if (rnd(&c.rng) < 0.8f) trace(&c, cx + cs, cy + i * step, 1, 0);
+        }
+        for (int i = 1; i <= pins; i++) {
+            rect(&c, cx + i * step - 4 * f, cy - 14 * f, 8 * f, 14 * f, pin, LV_OPA_COVER);
+            rect(&c, cx + i * step - 4 * f, cy + cs, 8 * f, 14 * f, pin, LV_OPA_COVER);
+            rect(&c, cx - 14 * f, cy + i * step - 4 * f, 14 * f, 8 * f, pin, LV_OPA_COVER);
+            rect(&c, cx + cs, cy + i * step - 4 * f, 14 * f, 8 * f, pin, LV_OPA_COVER);
+        }
+
+        lv_draw_rect_dsc_t chip;
+        lv_draw_rect_dsc_init(&chip);
+        chip.bg_opa = LV_OPA_TRANSP; /* the body #34373d -> #16171a is drawn dithered under it: this is the border */
+        chip.border_color = L5_WHITE;
+        chip.border_opa = 46;
+        chip.border_width = (int32_t)(2 * f) < 1 ? 1 : (int32_t)(2 * f);
+        lv_area_t ca = {(int32_t)cx, (int32_t)cy, (int32_t)(cx + cs) - 1, (int32_t)(cy + cs) - 1};
+        l5_grad_draw(&layer, l5_grad_key(lv_color_hex(0x34373d), lv_color_hex(0x16171a), 255), &ca);
+        lv_draw_rect(&layer, &chip, &ca);
+        circle(&c, cx + 18 * f, cy + 18 * f, 6 * f, c.accent);
+
+        l5_cover_initials(title && *title ? title : seed, ini);
+        int32_t ty = (int32_t)(cy + cs / 2 + 2 * f) - lv_font_get_line_height(fn.initials) / 2;
+        text(&c, ini, fn.initials, COVER_INK, (int32_t)cx, ty, (int32_t)(cx + cs), LV_TEXT_ALIGN_CENTER);
+    }
+    float band_top = H; /* where the icon ends */
 
     /* every label keeps its own buffer until lv_canvas_finish_layer(): the draw tasks only keep the pointer,
        so one buffer reused for the slot line and the name drew the name twice */
-    char slot[24], name[48], by[40];
+    char slot[24], name[48], by[L5_ABOUT_LEN + 8];
     if (with_text) { /* slot index + chip family, name + author band */
         /* U.cover's places (baselines H - 66f and H - 30f, band 128f); on 132 px emblems (SD, OTA) the fonts
            are larger than that scale, so the name moves above the line under it and the band grows to hold it */
-        const int32_t by_y = top_at_baseline(fn.small, H - 30 * f);
+        /* about.txt may be Polish: l5_mono_11 has ASCII only, l5_mono_13 takes the other letters from l5_latin_15 */
+        const lv_font_t *sub_font = about && W < 300 ? &l5_mono_13 : fn.small;
+        const int32_t by_y = top_at_baseline(sub_font, H - 30 * f);
         float base = H - 66 * f;
         if (base > by_y - 1) base = by_y - 1;
         const int32_t y0 = top_at_baseline(fn.title, base);
         float band = 128 * f;
         if (band < H - y0 + 2) band = H - y0 + 2;
+        band_top = H - band;
         rect(&c, 0, H - band, W, band, lv_color_hex(0x0b0c0e), 209);
         rect(&c, 0, H - band, W, 4 * f < 1 ? 1 : 4 * f, c.accent, LV_OPA_COVER);
         snprintf(slot, sizeof(slot), "SLOT %02d \xC2\xB7 ESP32-P4", num);
         text(&c, slot, fn.small, lv_color_hex(0xc9ccd2), (int32_t)(26 * f), (int32_t)(22 * f), W, LV_TEXT_ALIGN_LEFT);
-        size_t i = 0;
-        for (; title && title[i] && i + 1 < sizeof(name); i++) {
-            name[i] = (char)toupper((unsigned char)title[i]);
-        }
-        name[i] = 0;
+        l5_files_upper(name, sizeof(name), title ? title : ""); /* capitals of Polish letters too */
         const int32_t room = W - (int32_t)(52 * f);
         fit_line(name, sizeof(name), fn.title, room);
         lv_draw_label_dsc_t d;
@@ -244,24 +253,33 @@ static void draw(lv_obj_t *canvas, int32_t W, const char *seed, const char *titl
         d.flag = LV_TEXT_FLAG_EXPAND; /* one line: a wrapped name ran into the line under it */
         lv_area_t ta = {(int32_t)(26 * f), y0, W - (int32_t)(26 * f), y0 + lv_font_get_line_height(fn.title)};
         lv_draw_label(&layer, &d, &ta);
-        for (i = 0; sub && sub[i] && i + 1 < sizeof(by); i++) {
-            by[i] = (char)toupper((unsigned char)sub[i]);
-        }
-        by[i] = 0;
-        fit_line(by, sizeof(by), fn.small, room);
-        text(&c, by, fn.small, pin, (int32_t)(26 * f), by_y, W, LV_TEXT_ALIGN_LEFT);
+        l5_files_upper(by, sizeof(by), sub ? sub : "");
+        fit_line(by, sizeof(by), sub_font, room);
+        text(&c, by, sub_font, pin, (int32_t)(26 * f), by_y, W, LV_TEXT_ALIGN_LEFT);
     }
     lv_canvas_finish_layer(canvas, &layer);
+    if (icon) { /* drawn into the finished pixels: the draw tasks above are done */
+        const float top = 22 * f + lv_font_get_line_height(fn.small) + 14 * f, bottom = band_top - 14 * f;
+        int32_t box = (int32_t)(bottom - top);
+        if (box > W - (int32_t)(52 * f)) box = W - (int32_t)(52 * f);
+        l5_appicon_blend(lv_canvas_get_draw_buf(canvas), project, (W - box) / 2,
+                         (int32_t)(top + (bottom - top - box) / 2), box, box * 22 / 100);
+    }
 }
 
-static void cover_delete_cb(lv_event_t *e)
+static void canvas_delete_cb(lv_event_t *e)
 {
-    lv_draw_buf_t *buf = lv_event_get_user_data(e);
-    lv_draw_buf_destroy(buf);
+    lv_draw_buf_destroy(lv_event_get_user_data(e));
+}
+
+void l5_canvas_own(lv_obj_t *canvas, lv_draw_buf_t *buf)
+{
+    lv_canvas_set_draw_buf(canvas, buf);
+    lv_obj_add_event_cb(canvas, canvas_delete_cb, LV_EVENT_DELETE, buf);
 }
 
 lv_obj_t *l5_cover_create(lv_obj_t *parent, int32_t size, const char *seed, const char *title, const char *sub,
-                          int num, bool with_text)
+                          int num, bool with_text, const char *project)
 {
     lv_obj_t *cv = lv_canvas_create(parent);
     lv_draw_buf_t *buf = lv_draw_buf_create(size, size, LV_COLOR_FORMAT_RGB565, LV_STRIDE_AUTO);
@@ -269,8 +287,7 @@ lv_obj_t *l5_cover_create(lv_obj_t *parent, int32_t size, const char *seed, cons
         lv_obj_set_size(cv, size, size);
         return cv;
     }
-    lv_canvas_set_draw_buf(cv, buf);
-    lv_obj_add_event_cb(cv, cover_delete_cb, LV_EVENT_DELETE, buf);
+    l5_canvas_own(cv, buf);
     /* box-shadow: 0 4px 10px rgba(0,0,0,.45), 0 0 0 1px #000 (.hero canvas: 0 6px 16px rgba(0,0,0,.5)) */
     bool big = size >= 300;
     lv_obj_set_style_outline_width(cv, 1, 0);
@@ -279,6 +296,6 @@ lv_obj_t *l5_cover_create(lv_obj_t *parent, int32_t size, const char *seed, cons
     lv_obj_set_style_shadow_offset_y(cv, big ? 6 : 4, 0);
     lv_obj_set_style_shadow_opa(cv, big ? 128 : 115, 0);
     lv_obj_set_style_shadow_color(cv, L5_BLACK, 0);
-    draw(cv, size, seed, title, sub, num, with_text);
+    draw(cv, size, seed, title, sub, num, with_text, project);
     return cv;
 }

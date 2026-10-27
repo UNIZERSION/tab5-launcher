@@ -461,6 +461,99 @@ Measurement of the card's parts (render in ms, two runs of 3 frames per variant;
 | `HOME panel under card` (as before 0x1CF910) | 166–172 | panel under the card: about 24 ms more |
 | `HOME panel only` (no card) | 96–97 | the whole card about 48 ms |
 
+### App icons from the card (`main/ui/l5_appicon.c`, 2026-10-26/27, not flashed)
+
+- **Files:** `<card>/apps/<project>/icon.png` and `about.txt`, where `<project>` is `esp_app_desc_t.project_name` of
+  the image in the slot (or of the .bin selected in the SD tab). A name with `/`, `\`, `:`, `.` or `..` is not looked up.
+- **Loading:** one worker task (`l5_icons`, priority 2, core 1, 8 KB stack), made by the first job and kept: a task
+  per job (every HOME build, every .bin row) would take and give back internal RAM for its stack each time. A job
+  (`s_job` + `xTaskNotifyGive`) lists every app in the cache with the signatures of its files (size and time); the
+  worker stats both files, reads the first line of `about.txt` that is not empty (UTF-8 BOM skipped, cut to 63 bytes
+  on a character boundary) and decodes the icons that changed. When the task cannot be made, the LVGL task reads the
+  card itself (the PC snapshots refuse the task, so they always do). Without a mounted card no job starts; the
+  launcher never unmounts a card it mounted (`l5_board.c`), so the worker never reads a card that goes away under it.
+- **Decoding:** IHDR is read first: more than 1024 px or 2 MB is refused, and so is a PNG of more than 32 bits a
+  pixel (16-bit RGB or RGBA). LVGL 9.3's lodepng (`CONFIG_LV_USE_LODEPNG`) differs from upstream in two ways that
+  matter: `lodepng_decode32()` hands out an `lv_draw_buf_t` with R, G, B, A rows, not a bare array, and
+  `decodeGeneric()` unfilters the PNG's own format into that ARGB8888 buffer (4 bytes a pixel) before converting the
+  colours, so 6 or 8 bytes a pixel ran past its end (heap corruption in the PC test with a 16-bit RGBA icon; it would
+  have done the same on the Tab5). 16-bit gray (+ alpha) fits and is converted. The pixels are premultiplied, averaged
+  in k x k blocks when the short side is at least 512 px, and resampled (separable tent filter, bilinear when
+  enlarging) to fit 256 x 256.
+- **Out of memory** (the PNG buffer, lodepng's error 83, the resampled copy): the old icon and the old signature stay,
+  and a one-shot `lv_timer` looks at the card again after 10 s, three decodes in all (`MAX_TRIES`); then the icon waits
+  for its file to change. A file that is refused keeps its signature at once.
+- **Hand-over:** `lv_async_call()` under `l5_board_lock()`. The LVGL task swaps the results into the cache (16 entries,
+  used by the LVGL task only; a full cache drops the oldest app that is not installed). Each entry has a generation
+  (`gen`, from `add()`): a result for an entry that was dropped and made again meanwhile is not taken, and the card is
+  looked at once more. When something visible changed, HOME and SD are rebuilt (`l5_ui_render_views`) with
+  `l5_home_keep_place()` when HOME is the view on screen (the card in the middle stays there; a rebuild for new slots brings the boot app to the
+  middle), and the boot screen's tile and chips get the icons (`l5_boot_screen_icons`). Nothing on the LVGL task waits
+  for the card: the boot screen is drawn with the initials and gets the icon later.
+- **When:** `l5_home_render()` calls `l5_appicon_refresh()` (start, tab taps, data changes), and so does the SD tab's
+  panel of a .bin file; `l5_appicon_has()` adds an app that was never asked for. A request while a job is out sets a
+  flag, and the worker runs once more afterwards.
+- **Drawing:** every drawing resamples the cached icon to its own size and rounds the corners (22 % of the side, the
+  chips a circle) with antialiased coverage. The emblem (`l5_cover.c`) keeps its background, grid, slot line and band
+  and blends the icon into its RGB565 pixels after `lv_canvas_finish_layer()`, between the slot line and the band
+  (199 px on HOME, 76 px on the 132 px emblems); the band's second line is `about.txt` when there is one. Name and
+  band line are put in capitals with `l5_files_upper()` (FatFs' case folding, so Polish letters too); on the 132 px
+  emblems the `about.txt` line uses `l5_mono_13`, which takes the letters Share Tech Mono lacks from `l5_latin_15`
+  (`l5_mono_11` has ASCII only). The boot screen's tile (152 px on `L5_PANEL_3`) and the chips (44 px) are ARGB8888
+  canvases that own their buffers (`l5_canvas_own()`, shared with the emblems).
+- **Size:** lodepng without its encoder, text chunks and error texts, with `-Os` (top-level `CMakeLists.txt`): 22 KB
+  (40 KB as LVGL builds it).
+- **Tests:** the PC build of LVGL uses the same lodepng switches (`lvgl_host.py`), so the decoder the firmware ships is
+  the one tested; its PNG files come from `ui_shots.py` (`test_pngs()`: zlib-compressed RGB, interlaced RGB, 16-bit
+  RGBA, 16-bit gray + alpha, RGBA, palette with tRNS, 1100 px) instead of lodepng's encoder. `shots --taps`
+  (`run.py`): Polish capitals and a cut inside a letter, 512 px kept at 256, 200 x 120 fitted to 152 x 91,
+  transparent and rounded corners, colours of every PNG kind, `about.txt` with a BOM, blank lines and spaces, a long
+  Polish line cut on a letter, the carousel kept when icons arrive, a removed `about.txt`, a broken PNG, an 1100 px
+  PNG and a 16-bit RGBA PNG refused, running out of memory (`l5_appicon_test_nomem`: the old icon stays, read again
+  after 10 s, given up after three tries), the boot screen's initials replaced by the icon, the SD panel picking up
+  an icon copied later, removed icons gone. Snapshots 80-82: HOME with "1 Big + 2 Small" and three icons, the boot
+  screen with the icon and two chips, the SD panel of a .bin with a Polish `about.txt`.
+  Measured on the PC (LVGL task, as the snapshots run it): 512 px PNG 9 ms, 300 px interlaced 10 ms, 200 x 120 px
+  1 ms. Not measured on the device yet.
+
+### Colors from the app icons, idle clock (2026-10-27, not flashed)
+
+- **The colors** (`icon_colors()` in `l5_appicon.c`, in the worker after the icon is shrunk): the opaque pixels that
+  are not black (value under 12 %) or grey (saturation under 25 %) go into 24 hue bins; a bin counts with its two
+  neighbours. **Tint** = the bin with the most saturation (most of the icon), set to 55 % value and 35-80 %
+  saturation; **accent** = the bin with the most saturation^2 x value^4 (a small bright ring beats a large dark
+  background), at least 55 % saturated and 85 % bright. Under 3 % coloured pixels: none. Measured on the PC test
+  icons: ORBIT accent #fe8a1c, tint #283a8c; the teal badge #00d9c5 / #1c8c82; the green disc #1ed961 / #1c8c44.
+  `l5_appicon_colors(project, &accent, &tint)` gives them to the views.
+- **Tints:** the bootscreen's gradient starts at the tint over `boot_top` (35 %, `TINT_OPA`); HOME's panel
+  (`L5S.dark`, PANEL_2 -> PANEL) gets the tint of the card in the middle over PANEL_2 (27 %) as a local
+  `bg_color`, set in `paint_center()` (only when the carousel stops: `scroll_end_cb`). The dither hook draws the
+  new gradient. `l5_boot_screen_icons()` repaints the bootscreen's top, seconds and ring when icons or the accent
+  change.
+- **APP accent:** `cfg.color = "app"` (config.conf; `l5_config_accent_hex()` gives red for it, the UI resolves it).
+  `l5_cfg_accent_hex()` = `l5_appicon_boot_accent()`: the boot app's icon accent, before the worker read the icon
+  the one kept in NVS (`"l5"`: `acc_prj`, `acc_rgb`, written only when it changes; not while a decode that ran out
+  of memory waits for its retry), else red. `main.c` starts the
+  theme with it, so the first bootscreen frame has the right colour. `l5_cfg_accent_follow()` (after icons changed,
+  and in HOME's `paint_selection()` when the boot app changes) sets the accent, the rail, CFG and the bootscreen at
+  once and rebuilds the views after the current event (`l5_ui_render_views_async`); it returns true then, so the
+  icon hand-over does not repaint the bootscreen a second time. CFG's UI color row has five 38 px
+  swatches a row: the eight colours and APP (its colour is the one APP gives now).
+- **Idle clock** (`cfg.idleClock`, default on; CFG > DISPLAY > Idle clock): while the screen is dimmed the veil
+  is black and shows the time in seven-segment digits drawn with `lv_draw_line` (104 x 184 px, 18 px strokes, the
+  segments that are off at opacity 22, the colon in the accent; no face of the launcher has digits this size),
+  the date and the battery (`l5_clock_now()`, `l5_days`, `l5_battery_text()` in `l5_rail.c`, shared with the rail
+  and the bootscreen). `idle_cb()` repaints it when the minute changes (only the 600 x 184 px time box). The view
+  and the rail are hidden under it (`l5_ui_covered`, as under a system screen; a system screen that comes next
+  keeps them hidden and shows them again when it goes), so LVGL draws only the veil. Backlight with the clock:
+  `l5_ui_dim_level()` = a quarter of Brightness, at least 5 % (never above Brightness); without it 12 % + 1 as
+  before. Screen off works as before (backlight 0, drawing paused).
+- **Tests:** `shots --taps` look_test: ORBIT's accent orange and tint blue, the badge teal, APP = the icon's accent
+  and kept in NVS, another boot app another accent, the bootscreen's top = tint over `boot_top`, red again, the clock
+  on the dimmed screen and gone after waking, no clock with Idle clock off. The dither test samples INSTALL &
+  STORAGE now (DISPLAY ends in Idle clock). Snapshots 83-88: HOME, bootscreen and CFG with APP, the idle clock,
+  HOME and bootscreen in Daylight.
+
 ## SD card: FAT32, exFAT, long names
 
 - **FAT32 and exFAT.** IDF 5.5.2 has `FF_FS_EXFAT 0` hard-coded in FatFs and offers no Kconfig option for it.
@@ -1217,6 +1310,11 @@ Port of `L5.connect`, `L5.pickWifi` and `L5.wifiMenu` (app.js) in `main/ui/l5_wi
 | + Charge Mode: FULL and USB · NOT CHARGING at near-zero current, two matching readings; HOME measurement only with `L5_HOME_BENCH` (flashed 2026-10-19) | 1,898,288 B (0x1CF730) | 194 KB (9%) |
 | + charger enabled at startup (CHG_EN on PI4IOE 0x44 register by register, `l5_pi4io.h`) and again after a failed OFF (flashed 2026-10-19) | 1,899,312 B (0x1CFB30) | 193 KB (9%) |
 | + new look (2026-10-26, on top of the restored build of 2026-10-20 at 1,912,880 B): boot screen with the countdown ring, side menu instead of the top bar, HOME carousel (not flashed) | 1,900,016 B (0x1CFDF0) | 192 KB (9%) |
+| + colour themes (Graphite, Midnight, Daylight) (not flashed) | 1,901,216 B (0x1D02A0) | 191 KB (9%) |
+| + slots of two sizes, "1 Big + 2 Small" (not flashed) | 1,903,200 B (0x1D0A60) | 189 KB (9%) |
+| + app icons and `about.txt` from the card, lodepng without encoder and error texts with `-Os` | 1,932,848 B (0x1D7E30) | 160 KB (8%) |
+| + review fixes: one icon worker, retries after running out of memory, 16-bit PNGs refused, Polish capitals (not flashed) | 1,933,552 B (0x1D80F0) | 160 KB (8%) |
+| + colours from the app icons (tints, APP accent kept in NVS), idle clock with the launcher hidden under it (not flashed) | 1,938,624 B (0x1D94C0) | 155 KB (8%) |
 
 The Wi-Fi stack and OTA fit in the 2 MB partition: the launcher, `L5_POOL_START` and the fixed areas do not
 change, and the launcher partition did not have to be enlarged. The largest parts: host esp_hosted 2.12.6
@@ -1314,7 +1412,8 @@ the default settings at once (the scheme stays), and a new file is created on th
 | `main/ui/l5_dialogs.c` | `U.modal` (`l5_ask`), `U.menu`, `U.confirm`, `U.info`, `U.progress`, `U.toast` |
 | `main/ui/l5_keyboard.c` | `U.keyboard` |
 | `main/ui/l5_wifi_ui.c` | `L5.wifiMenu`, `L5.pickWifi`, `L5.connect` |
-| `main/ui/l5_cover.c` | `U.cover()` (the same FNV-1a seed and mulberry32 generator) |
+| `main/ui/l5_cover.c` | `U.cover()` (the same FNV-1a seed and mulberry32 generator); with an app icon from the card the icon instead of the chip |
+| `main/ui/l5_appicon.c` | app icons and `about.txt` from `<card>/apps/<project>/`: worker, PNG decoding (lodepng), cache, resampling (not in the prototype) |
 | `main/ui/l5_sd.c` | `L5.views.sd` (`#sdMain`, `#sdSide`), the `L5.install` / `L5.tooBig` interface (file actions: `l5_sd_ops.c`) |
 | `main/l5_ptable.c` | `L5.table`, `L5.applyScheme` (writes the table at 0x8000), partition format / backup / restore, SANITY CHECK of a .bin file |
 | `main/ui/l5_pman.c` | `L5.views.pman` + `pmAction`, `L5.pickScheme` |

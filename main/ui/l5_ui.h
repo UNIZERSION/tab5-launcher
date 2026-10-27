@@ -38,6 +38,8 @@ lv_obj_t *l5_ui_toasts(void);    /* .toast container, above #sys */
 void l5_ui_set_booted(bool booted); /* R.booted: idle dimming and screen off only run inside the launcher */
 void l5_ui_wake(void);           /* undo idle dimming / screen off (dialogs call it when they open) */
 bool l5_ui_asleep(void);         /* dimmed or dark: the next tap or key only wakes the screen */
+bool l5_ui_idle_clock(void);     /* the dimmed screen shows the clock (CFG > Idle clock) */
+int l5_ui_dim_level(int bright, bool clock); /* the dimmed backlight %: with the clock a quarter, at least 5 */
 
 /* ---------- keyboard keys (l5_keys.c): the M5Stack Tab5 Keyboard in the whole UI ---------- */
 void l5_keys_init(void);         /* after l5_ui_init: a 20 ms timer takes the keys and sends them on */
@@ -57,6 +59,12 @@ void l5_rail_paint_wifi(void);   /* Wi-Fi icon: wifi-off / connecting / .tb-btn.
 void l5_rail_apply_accent(void); /* after l5_theme_set_accent */
 void l5_rail_rebuild(void);      /* after l5_theme_set: built again in the new colours */
 int l5_rail_battery(void);       /* the battery percent it shows (read every 30 s), -1 when unknown */
+/* for the rail, the bootscreen and the idle clock: the local time (false while the RTC is not set, before 2024),
+   the days "SUN".."SAT", "BATTERY 76%" or "USB" from the rail's reading */
+struct tm;
+bool l5_clock_now(struct tm *t);
+extern const char *const l5_days[7];
+void l5_battery_text(char *out, size_t len);
 
 /* ---------- on-screen keyboard (l5_keyboard.c), port of U.keyboard ---------- */
 typedef void (*l5_keyboard_cb_t)(const char *text, void *user); /* text == NULL: CANCEL */
@@ -79,6 +87,7 @@ const char *l5_wifi_summary(char *buf, size_t len); /* "Connected: X" / "N saved
 
 /* ---------- views ---------- */
 void l5_home_render(lv_obj_t *view);                  /* l5_home.c */
+void l5_home_keep_place(void); /* the next HOME build keeps the card in the middle (new icons, not new slots) */
 void l5_sd_render(lv_obj_t *view);                    /* l5_sd.c: file browser + install */
 void l5_cfg_render(lv_obj_t *view);                   /* l5_cfg.c: settings, saved to /config.conf */
 void l5_cfg_paint_wifi(void);                         /* CFG > Wi-Fi networks subtitle */
@@ -87,6 +96,11 @@ void l5_cfg_save(void);        /* /config.conf 300 ms after the last change, in 
 esp_err_t l5_cfg_flush(void);  /* write a pending change now (restart, power-off, hand-over) */
 esp_err_t l5_cfg_save_now(void); /* write g_cfg now (from any task) */
 void l5_cfg_discard_pending(void); /* /config.conf is about to be deleted: a pending change is not written */
+/* the launcher's accent: CFG > UI color, with APP the boot app's icon colour (red without one) */
+uint32_t l5_cfg_accent_hex(void);
+/* with APP: the accent follows the boot app (another app chosen, its icon loaded); every view and the bootscreen
+   follow. True when the accent changed (the bootscreen was repainted). */
+bool l5_cfg_accent_follow(void);
 void l5_cfg_defaults_now(void);    /* /config.conf was deleted: defaults applied (scheme kept), not saved */
 esp_err_t l5_cfg_reload_now(void); /* /config.conf was replaced: its settings apply now (scheme kept); not JSON: kept */
 void l5_views_render(l5_view_t v, lv_obj_t *view);    /* l5_views.c: routing */
@@ -114,6 +128,7 @@ void l5_ota_paint_wifi(void);         /* OTA follows the Wi-Fi state */
 void l5_boot_screen(void);   /* L5.bootScreen: the app in a ring that counts down, LAUNCHER, START NOW, other apps */
 void l5_boot_screen_stop(void);  /* its countdown stops: another system screen replaces it (l5_sys.c) */
 bool l5_boot_screen_key(const l5_key_t *k); /* the bootscreen is up: any key enters the launcher (true) */
+void l5_boot_screen_icons(void); /* app icons were loaded (l5_appicon.c): the tile and chips show them */
 void l5_enter_launcher(void);    /* from the bootscreen into HOME */
 
 /* ---------- system screens (l5_sys.c) ---------- */
@@ -180,8 +195,31 @@ void l5w_head_text(lv_obj_t *head, const char *kind, const char *title, const ch
 void l5w_apps_erased(char *out, size_t len);
 
 /* ---------- procedural firmware emblem (l5_cover.c), port of U.cover ---------- */
+/* project: esp_app_desc_t.project_name (NULL: none); with an icon on the card (l5_appicon.c) the emblem shows it
+   instead of the chip, and the first line of about.txt instead of sub */
 lv_obj_t *l5_cover_create(lv_obj_t *parent, int32_t size, const char *seed, const char *title, const char *sub,
-                          int num, bool text);
+                          int num, bool text, const char *project);
+
+/* ---------- app icons from the card (l5_appicon.c) ---------- */
+/* <card>/apps/<project>/icon.png (PNG up to 1024 x 1024 px and 2 MB, square looks best) and about.txt (its first
+   line). A worker loads them; the views are drawn again when something changed. */
+#define L5_ABOUT_LEN 64
+void l5_appicon_refresh(void); /* every app's files on the card again (HOME and the SD tab's .bin panel call it) */
+bool l5_appicon_has(const char *project);  /* its icon is loaded; one never asked for is looked for */
+const char *l5_appicon_about(const char *project); /* about.txt's first line, NULL when none */
+/* the icon fitted into box x box, corners rounded to radius (LV_RADIUS_CIRCLE: round), blended into an RGB565
+   buffer at x, y; false without an icon */
+bool l5_appicon_blend(lv_draw_buf_t *dst, const char *project, int32_t x, int32_t y, int32_t box, int32_t radius);
+/* the same as a canvas with alpha; NULL without an icon */
+lv_obj_t *l5_appicon_create(lv_obj_t *parent, const char *project, int32_t box, int32_t radius);
+/* the icon's colours, evened out for the launcher: accent (vivid: ring, buttons, frames) and tint (the hue most of the
+   icon has, for backgrounds); false without an icon or when it is grey. Either pointer may be NULL. */
+bool l5_appicon_colors(const char *project, lv_color_t *accent, lv_color_t *tint);
+/* the boot app's accent (0xRRGGBB): from its icon, before the icon is read the one kept from the last start (NVS),
+   else fallback */
+uint32_t l5_appicon_boot_accent(uint32_t fallback);
+/* the canvas shows buf and destroys it with itself (the emblems, the app icons) */
+void l5_canvas_own(lv_obj_t *canvas, lv_draw_buf_t *buf);
 /* the emblem's two letters: the first letters of the first two words, upper case ("FW" without any) */
 void l5_cover_initials(const char *title, char out[3]);
 

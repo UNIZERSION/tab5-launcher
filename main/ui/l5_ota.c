@@ -1295,7 +1295,7 @@ static void build_side(void)
     const char *author = !strcmp(O.dfid, O.sel) && O.dauthor[0] ? O.dauthor : it ? it->author : "";
     bool star = !strcmp(O.dfid, O.sel) ? O.dstar : it && it->star;
     lv_obj_t *h = l5w_side_head(s);
-    l5_cover_create(h, 132, name, name, author, 0, true);
+    l5_cover_create(h, 132, name, name, author, 0, true, NULL);
     snprintf(t, sizeof(t), "CATALOG%s", star ? " \xC2\xB7 STARRED" : "");
     l5w_head_text(h, t, name, author);
     lv_obj_t *g = l5w_kv_grid(s);

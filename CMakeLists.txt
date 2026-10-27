@@ -60,3 +60,12 @@ list(FILTER _l5_lvgl_srcs EXCLUDE REGEX "/src/font/lv_font_fmt_txt\\.c$")
 list(APPEND _l5_lvgl_srcs "${_l5_rle_out}")
 set_target_properties(${_l5_lvgl} PROPERTIES SOURCES "${_l5_lvgl_srcs}")
 message(STATUS "Tab5 Launcher: LVGL font RLE state per call (${_l5_rle_out})")
+
+# App icons (main/ui/l5_appicon.c) only decode PNG files: LVGL's lodepng is built without its encoder, text chunks
+# and error texts, and for size. l5_appicon.c calls only lodepng_decode32(), whose declaration does not depend on
+# these switches (it reads the IHDR size itself instead of using LodePNGState, whose layout does). lv_lodepng.c
+# needs lodepng_load_file(): the file functions stay.
+target_compile_definitions(${_l5_lvgl} PRIVATE LODEPNG_NO_COMPILE_ENCODER LODEPNG_NO_COMPILE_ANCILLARY_CHUNKS
+                           LODEPNG_NO_COMPILE_ERROR_TEXT)
+set_source_files_properties("${_l5_lvgl_dir}/src/libs/lodepng/lodepng.c" TARGET_DIRECTORY ${_l5_lvgl}
+                            PROPERTIES COMPILE_OPTIONS "-Os")

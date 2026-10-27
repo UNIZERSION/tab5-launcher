@@ -34,7 +34,7 @@ static lv_obj_t *s_wifi_sub; /* "Wi-Fi networks" subtitle, follows the Wi-Fi sta
 static struct {
     lv_obj_t *bright, *dim, *off, *rot, *boot; /* value labels */
     lv_obj_t *ask_title, *bins_title;     /* row titles that name the state */
-    lv_obj_t *ask, *bins, *wifi, *deep, *btn; /* toggles */
+    lv_obj_t *ask, *bins, *wifi, *deep, *btn, *clock; /* toggles */
     lv_obj_t *swatch[MAX_SWATCH];
     lv_obj_t *theme[L5_THEME_COUNT]; /* the previews of Graphite, Midnight, Daylight */
     lv_obj_t *theme_sub;             /* the Theme row's subtitle: the theme's name */
@@ -143,9 +143,35 @@ static int cfg_theme(void)
     return t < 0 ? L5_THEME_GRAPHITE : t;
 }
 
+#define APP l5_color_count /* the swatch after the colours: APP, the boot app's icon colour */
+
+static bool app_color(void)
+{
+    return !strcmp(g_cfg.color, "app");
+}
+
+uint32_t l5_cfg_accent_hex(void)
+{
+    return app_color() ? l5_appicon_boot_accent(l5_colors[0].hex) : l5_config_accent_hex(&g_cfg);
+}
+
+bool l5_cfg_accent_follow(void)
+{
+    if (!app_color()) return false;
+    const uint32_t hex = l5_cfg_accent_hex();
+    if (hex == (lv_color_to_u32(L5P.accent) & 0xFFFFFF)) return false;
+    l5_theme_set_accent(hex);
+    l5_rail_apply_accent();
+    l5_cfg_paint();
+    l5_boot_screen_icons(); /* the bootscreen's ring, tile and seconds */
+    /* the views bake the accent into local styles; after the current event (a tap in HOME may have chosen the app) */
+    l5_ui_render_views_async(L5_VIEWS_ALL);
+    return true;
+}
+
 static void apply_look(void) /* L5.applyLook */
 {
-    l5_theme_set_accent(l5_config_accent_hex(&g_cfg));
+    l5_theme_set_accent(l5_cfg_accent_hex());
     l5_rail_apply_accent();
     if (cfg_theme() != l5_theme_current()) l5_ui_retheme(cfg_theme()); /* Reset config, config.conf replaced */
     l5_board_set_rotation(g_cfg.rot);
@@ -201,8 +227,18 @@ void l5_cfg_paint(void)
     set_toggle(W.wifi, g_cfg.wifiAuto);
     set_toggle(W.deep, g_cfg.deepSleepStart);
     set_toggle(W.btn, g_cfg.btnOnlyStart);
+    set_toggle(W.clock, g_cfg.idleClock);
     for (int i = 0; i < l5_color_count && i < MAX_SWATCH; i++) {
         if (W.swatch[i]) lv_obj_set_state(W.swatch[i], LV_STATE_CHECKED, !strcmp(g_cfg.color, l5_colors[i].id));
+    }
+    if (W.swatch[APP]) { /* the APP swatch shows the colour it gives now */
+        const uint32_t hex = l5_appicon_boot_accent(0x1000000);
+        const lv_color_t c = hex >> 24 ? L5_PANEL_3 : lv_color_hex(hex);
+        lv_obj_set_state(W.swatch[APP], LV_STATE_CHECKED, app_color());
+        lv_obj_set_style_bg_color(W.swatch[APP], c, 0);
+        lv_obj_set_style_text_color(lv_obj_get_child(W.swatch[APP], 0),
+                                    hex >> 24 ? L5_ON_PANEL : (c.red * 30 + c.green * 59 + c.blue * 11) / 100 > 165
+                                                                  ? lv_color_hex(0x111111) : L5_WHITE, 0);
     }
     for (int i = 0; i < L5_THEME_COUNT; i++) {
         if (!W.theme[i]) continue;
@@ -318,6 +354,7 @@ static void action(const char *k)
         g_cfg.onlyBins = !g_cfg.onlyBins;
         l5_ui_render_views(L5_VIEW_BIT(L5_VIEW_SD)); /* the SD list changes: rebuilt when shown */
     } else if (!strcmp(k, "wifiAuto")) g_cfg.wifiAuto = !g_cfg.wifiAuto;
+    else if (!strcmp(k, "idleClock")) g_cfg.idleClock = !g_cfg.idleClock;
     else if (!strcmp(k, "btnOnlyStart")) g_cfg.btnOnlyStart = !g_cfg.btnOnlyStart;
     else if (!strcmp(k, "deepSleepStart")) {
         if (g_cfg.deepSleepStart) {
@@ -414,7 +451,7 @@ static void step_cb(lv_event_t *e)
 
 static void set_color(int i)
 {
-    strlcpy(g_cfg.color, l5_colors[i].id, sizeof(g_cfg.color));
+    strlcpy(g_cfg.color, i == APP ? "app" : l5_colors[i].id, sizeof(g_cfg.color));
     apply_look(); /* shared styles and the top bar follow at once; CFG uses only shared accent styles */
     save();
     l5_cfg_paint();
@@ -572,17 +609,21 @@ static void swatches(lv_obj_t *row)
 {
     if (K.n && K.row[K.n - 1] == row) K.color[K.n - 1] = true;
     lv_obj_t *w = l5_box(row);
-    lv_obj_set_size(w, 4 * 44 + 3 * 6, LV_SIZE_CONTENT);
+    lv_obj_set_size(w, 5 * 38 + 4 * 6, LV_SIZE_CONTENT); /* five a row: the eight colours and APP */
     lv_obj_set_style_pad_row(w, 6, 0);
     lv_obj_set_style_pad_column(w, 6, 0);
     lv_obj_set_flex_flow(w, LV_FLEX_FLOW_ROW_WRAP);
-    for (int i = 0; i < l5_color_count && i < MAX_SWATCH; i++) {
+    for (int i = 0; i <= APP && i < MAX_SWATCH; i++) {
         lv_obj_t *b = lv_button_create(w);
         lv_obj_remove_style_all(b);
-        lv_obj_set_size(b, 44, 44);
+        lv_obj_set_size(b, 38, 38);
         lv_obj_set_style_radius(b, 4, 0);
         lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_color(b, lv_color_hex(l5_colors[i].hex), 0);
+        if (i == APP) { /* its colour and text: l5_cfg_paint() */
+            lv_obj_center(l5_label(b, &l5_mono_12, L5_ON_PANEL, "APP"));
+        } else {
+            lv_obj_set_style_bg_color(b, lv_color_hex(l5_colors[i].hex), 0);
+        }
         lv_obj_set_style_border_width(b, 2, 0);
         lv_obj_set_style_border_color(b, L5_BLACK, 0);
         lv_obj_set_style_border_opa(b, 102, 0);
@@ -680,10 +721,10 @@ bool l5_cfg_key(const l5_key_t *k)
             return true;
         }
         if (!K.color[f]) return false;
-        {
+        { /* the colours, then APP */
             int i = 0;
-            while (i < l5_color_count - 1 && strcmp(l5_colors[i].id, g_cfg.color)) i++;
-            set_color((i + (k->kind == L5_KEY_RIGHT ? 1 : l5_color_count - 1)) % l5_color_count);
+            while (i < APP && strcmp(l5_colors[i].id, g_cfg.color)) i++;
+            set_color((i + (k->kind == L5_KEY_RIGHT ? 1 : APP)) % (APP + 1));
         }
         return true;
     default: return false;
@@ -705,7 +746,7 @@ void l5_cfg_render(lv_obj_t *view)
     W.bright = stepper(crow(d, NULL, "Brightness", "5% steps", false), "bright-", "bright+");
     W.dim = stepper(crow(d, NULL, "Dim time", "Screen dims when idle", false), "dim-", "dim+");
     W.off = stepper(crow(d, NULL, "Screen off", "Backlight off when idle", false), "scr-", "scr+");
-    lv_obj_t *c = crow(d, NULL, "UI color", "Accent of the whole Launcher", false);
+    lv_obj_t *c = crow(d, NULL, "UI color", "Accent; APP: app icon", false);
     lv_obj_set_style_min_height(c, 104, 0);
     swatches(c);
     lv_obj_t *th = crow(d, NULL, "Theme", l5_themes[cfg_theme()].label, false);
@@ -714,6 +755,7 @@ void l5_cfg_render(lv_obj_t *view)
     W.rot = value(crow(d, "rot", "Rotation", "Landscape / landscape inverted", false));
     W.boot = stepper(crow(d, NULL, "Bootscreen time", "Wait before the app starts", false), "boot-", "boot+");
     chev(crow(d, "charge", "Charge Mode", "Screen off, shows battery", false));
+    W.clock = toggle(crow(d, "idleClock", "Idle clock", "A clock on the dimmed screen", false));
 
     lv_obj_t *s = column(view, 1, "INSTALL & STORAGE");
     lv_obj_t *r = crow(s, "askSpiffs", "", "Ask before installing a SPIFFS image", false);

@@ -3,6 +3,7 @@
    spiffs), chip and PSRAM, NVS, the network (the OTA scene has no Wi-Fi), config.conf, firmware descriptions,
    system screens. The actions behind the buttons are not part of the snapshots. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "esp_chip_info.h"
 #include "esp_mac.h"
@@ -252,6 +253,62 @@ esp_err_t nvs_erase_all(nvs_handle_t h) { (void)h; return ESP_OK; }
 esp_err_t nvs_commit(nvs_handle_t h) { (void)h; return ESP_OK; }
 void nvs_close(nvs_handle_t h) { (void)h; }
 
+/* the NVS keys the snapshots read back: name and value as text */
+static struct {
+    char key[16], val[40];
+} s_nvs[8];
+
+static char *nvs_slot(const char *key, bool make)
+{
+    for (int i = 0; i < 8; i++) {
+        if (!strcmp(s_nvs[i].key, key)) return s_nvs[i].val;
+    }
+    for (int i = 0; make && i < 8; i++) {
+        if (!s_nvs[i].key[0]) {
+            snprintf(s_nvs[i].key, sizeof(s_nvs[i].key), "%s", key);
+            return s_nvs[i].val;
+        }
+    }
+    return NULL;
+}
+
+esp_err_t nvs_get_u32(nvs_handle_t h, const char *key, uint32_t *out)
+{
+    (void)h;
+    const char *v = nvs_slot(key, false);
+    if (!v) return ESP_ERR_NOT_FOUND;
+    *out = (uint32_t)strtoul(v, NULL, 10);
+    return ESP_OK;
+}
+
+esp_err_t nvs_set_u32(nvs_handle_t h, const char *key, uint32_t value)
+{
+    (void)h;
+    char *v = nvs_slot(key, true);
+    if (!v) return ESP_FAIL;
+    snprintf(v, 40, "%lu", (unsigned long)value);
+    return ESP_OK;
+}
+
+esp_err_t nvs_get_str(nvs_handle_t h, const char *key, char *out, size_t *len)
+{
+    (void)h;
+    const char *v = nvs_slot(key, false);
+    if (!v) return ESP_ERR_NOT_FOUND;
+    if (strlen(v) + 1 > *len) return ESP_FAIL;
+    strcpy(out, v);
+    return ESP_OK;
+}
+
+esp_err_t nvs_set_str(nvs_handle_t h, const char *key, const char *value)
+{
+    (void)h;
+    char *v = nvs_slot(key, true);
+    if (!v) return ESP_FAIL;
+    snprintf(v, 40, "%s", value);
+    return ESP_OK;
+}
+
 /* ---------- Wi-Fi UI, network, config.conf, system screens ---------- */
 
 extern int shots_wifi_state; /* ui_stubs.c */
@@ -322,7 +379,7 @@ void l5_config_defaults(l5_config_t *cfg)
     cfg->screenOff = 120;
     strcpy(cfg->color, "red");
     strcpy(cfg->theme, "graphite");
-    cfg->askSpiffs = cfg->onlyBins = cfg->wifiAuto = cfg->deepSleepStart = true;
+    cfg->askSpiffs = cfg->onlyBins = cfg->wifiAuto = cfg->deepSleepStart = cfg->idleClock = true;
     cfg->bootTime = 3;
     strcpy(cfg->scheme, "default");
 }

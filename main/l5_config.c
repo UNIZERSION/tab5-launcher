@@ -26,7 +26,8 @@ void l5_config_defaults(l5_config_t *cfg)
     /* app.js defaults().cfg */
     *cfg = (l5_config_t){
         .bright = 70, .dim = 30, .screenOff = 120, .color = "red", .theme = "graphite", .rot = 0, .askSpiffs = true, .onlyBins = true,
-        .bootTime = 3, .wifiAuto = true, .deepSleepStart = true, .btnOnlyStart = false, .scheme = "default",
+        .bootTime = 3, .wifiAuto = true, .deepSleepStart = true, .btnOnlyStart = false, .idleClock = true,
+        .scheme = "default",
     };
 }
 
@@ -186,9 +187,10 @@ esp_err_t l5_config_load(l5_config_t *cfg)
     get_bool(root, "wifiAuto", &cfg->wifiAuto);
     get_bool(root, "deepSleepStart", &cfg->deepSleepStart);
     get_bool(root, "btnOnlyStart", &cfg->btnOnlyStart);
+    get_bool(root, "idleClock", &cfg->idleClock);
     cJSON_Delete(root);
 
-    bool known = false;
+    bool known = strcmp(cfg->color, "app") == 0;
     for (int i = 0; i < l5_color_count; i++) {
         known |= strcmp(cfg->color, l5_colors[i].id) == 0;
     }
@@ -219,6 +221,7 @@ esp_err_t l5_config_save(const l5_config_t *cfg)
     set_item(root, "wifiAuto", cJSON_CreateBool(cfg->wifiAuto));
     set_item(root, "deepSleepStart", cJSON_CreateBool(cfg->deepSleepStart));
     set_item(root, "btnOnlyStart", cJSON_CreateBool(cfg->btnOnlyStart));
+    set_item(root, "idleClock", cJSON_CreateBool(cfg->idleClock));
     set_item(root, "scheme", cJSON_CreateString(cfg->scheme));
     esp_err_t err = write_root(root);
     cJSON_Delete(root);

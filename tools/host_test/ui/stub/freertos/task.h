@@ -1,7 +1,7 @@
 #pragma once
 #include "FreeRTOS.h"
-/* the snapshots run a worker to its end right away; tasks that wait forever (the config saver, the OTA worker)
-   are refused, and their callers write / fetch without them */
+/* the snapshots run a worker to its end right away; tasks that wait forever (the config saver, the OTA worker,
+   the icon worker) are refused, and their callers write / fetch / read without them */
 #define pdFAIL 0
 #define pdTRUE 1
 #define pdFALSE 0

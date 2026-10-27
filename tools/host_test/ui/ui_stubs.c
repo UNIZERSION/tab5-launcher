@@ -18,7 +18,7 @@
 #include "l5_wifi.h"
 
 l5_config_t g_cfg = {.bright = 70, .dim = 30, .screenOff = 120, .color = "red", .theme = "graphite", .askSpiffs = true, .onlyBins = false,
-                     .bootTime = 3, .wifiAuto = true, .deepSleepStart = true, .scheme = "custom"};
+                     .bootTime = 3, .wifiAuto = true, .deepSleepStart = true, .idleClock = true, .scheme = "custom"};
 l5_slots_t g_slots = {.n = 1, .slot_kb = 11264, .boot = 0, .scheme = "Custom"}; /* l5_slots_scan() always names it */
 int shots_backlight = -1; /* last l5_board_backlight() value */
 int shots_wifi_state = L5_WIFI_CONNECTED;
@@ -51,6 +51,7 @@ BaseType_t xTaskCreatePinnedToCore(void (*fn)(void *), const char *name, uint32_
     (void)stack, (void)prio, (void)handle, (void)core;
     if (!strcmp(name, "l5_cfg_save")) return pdFAIL; /* waits for work forever: config.conf is written at once */
     if (!strcmp(name, "l5_ota")) return pdPASS; /* the catalog worker waits forever: not run, OTA lists only favorites */
+    if (!strcmp(name, "l5_icons")) return pdFAIL; /* waits for jobs forever: the LVGL task reads the icons itself */
     fn(arg); /* the worker runs to its end, its result dialog included */
     return pdPASS;
 }

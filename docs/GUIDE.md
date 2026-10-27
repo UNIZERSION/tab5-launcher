@@ -61,7 +61,7 @@ If you build from source (ESP-IDF 5.5.2), flash the launcher with `idf.py -p COM
 
 ## Boot screen and buttons
 
-After power-on and after RESET, the launcher always starts first. The boot screen shows the app that starts next: its initials on an accent tile inside a ring that empties as the countdown runs (Bootscreen time, 1–5 s), its name, and the seconds left. Then the app starts on its own.
+After power-on and after RESET, the launcher always starts first. The boot screen shows the app that starts next: its icon from the SD card (see [App icons](#app-icons-from-the-sd-card)) or its initials on an accent tile inside a ring that empties as the countdown runs (Bootscreen time, 1–5 s), its name, and the seconds left. Then the app starts on its own.
 
 ![Boot screen with the countdown ring](images/boot.png)
 
@@ -105,13 +105,45 @@ Every slot is a card in a carousel (since 26.10.2026). The card in the middle is
 ![HOME with four app slots](images/home-four-slots.png)
 
 - **Swipe** left or right, tap a card at the side, or tap a dot under the cards to bring another card to the middle.
-- A card shows an image generated from the app name, the name, the project and version, where it came from (SD, OTA or FLASH) with the install date, and how much of the slot it uses.
+- A card shows the app's icon from the SD card (see below) or an image generated from the app name, the name, the project and version, where it came from (SD, OTA or FLASH) with the install date, and how much of the slot it uses.
 - **Tapping the card in the middle** makes it the app that starts after the boot screen. That card has an accent frame and a **BOOTS** badge.
 - The footer describes the card in the middle. **BOOT ‹name›** starts it right away and makes it the boot app.
 - **Card menu (⋮)** on the card in the middle: Boot now, Boot this app after the bootscreen, and Erase appN (remove it from flash after you confirm; the file on the SD card stays).
 - An empty slot has an "Empty slot" card with **FROM SD** and **FROM OTA** buttons, which open those tabs. Without a card in the reader it says why FROM SD will not work.
 - An app the launcher did not install itself (e.g. flashed over USB) does not start by itself until you choose it: no card has the BOOTS badge, and the boot screen says "NO APP CHOSEN TO START". BOOT starts it and makes it the boot app.
 - Tab5 Keyboard: Left / Right (or Up / Down) make the previous / next app the boot app and bring it to the middle, Enter = BOOT.
+
+### App icons from the SD card
+
+An app can have its own icon and a one-line description. Put them in a folder named after the app's **project name** under `apps` on the card:
+
+```
+apps/
+  orbit_drum/
+    icon.png     the icon
+    about.txt    the description: its first line
+  pstx1_serwis/
+    icon.png
+```
+
+![HOME with app icons](images/home-icons.png)
+
+- **Project name:** the small text under the app name on its HOME card, before the version (for example `orbit_drum` in "orbit_drum · v0.4.9"). The SD tab shows it under the name of a selected .bin file too.
+- **icon.png:** a PNG file, at most 1024 × 1024 px and 2 MB, with 8 bits a channel (the usual kind; a PNG saved with 16 bits a channel is not shown). A square icon of 256 × 256 px looks best; transparent parts are allowed. Other shapes are fitted without stretching.
+- **about.txt:** the first line that is not empty, up to 63 bytes (Polish letters take two bytes each). It replaces "ESP32-P4 APP" (or the author) on the card, in capital letters; Polish letters are shown too. Keep it short: a line that does not fit is cut with "…".
+- **Where the icon appears:** on the app's HOME card, in the tile on the boot screen, on the chips of the other apps, and in the SD tab when you select a .bin file of that app (even before it is installed).
+- **When the launcher reads them:** at start, every time HOME is drawn again and when you select a .bin file in the SD tab. After copying an icon to the card, tap **HOME**. They are read in the background: the boot screen does not wait for them, and the icon appears a moment later.
+- If an icon is not shown, the PNG may be damaged, too large or saved with 16 bits a channel. The launcher then shows the generated image. If the Tab5 ran short of memory, it tries again twice, 10 s apart.
+
+### Colors from the app icon
+
+The launcher takes two colors from every icon: the color most of the icon has, and its most vivid color. For ORBIT DRUM's icon that is its blue background and its orange ring. Grey icons give no colors.
+
+![HOME with the APP accent](images/home-app-accent.png)
+
+- **Background:** the top of the boot screen and of the HOME panel take a light shade of the app's main color. In HOME it is the app on the card in the middle; it changes when the carousel stops on another card.
+- **Accent (CFG > UI color > APP):** the whole launcher (the ring, buttons, frames, side menu) takes the vivid color of the boot app's icon. Choose another boot app and the accent changes with it. Without an icon it stays red.
+- The launcher remembers the boot app's color, so after a restart the boot screen shows it from the first moment.
 
 ## SD: card manager
 
@@ -248,13 +280,16 @@ CFG has three columns: DISPLAY, INSTALL & STORAGE and SYSTEM. Changes take effec
 | Setting | What it does | Default |
 |---|---|---|
 | Brightness | screen brightness, − / + buttons in 5% steps | 70% |
-| Dim time | dims the screen after inactivity: OFF, 10, 20, 30, 60, 120 or 300 s | 30 s |
+| Dim time | dims the screen after inactivity: OFF, 10, 20, 30, 60, 120 or 300 s; with **Idle clock** on, the dimmed screen shows a clock | 30 s |
 | Screen off | turns the backlight off completely after inactivity: OFF, 1, 2, 5, 10 or 30 min; the first touch only wakes the screen | 2 min |
-| UI color | the accent color of the whole launcher: red, orange, amber, green, cyan, blue, violet, magenta | red |
+| UI color | the accent color of the whole launcher: red, orange, amber, green, cyan, blue, violet, magenta, or **APP**: the color of the boot app's icon (see below) | red |
 | Theme | the colors of the whole launcher, applied at once without a restart: **Graphite** (light frame, black panels), **Midnight** (dark everywhere), **Daylight** (light panels, dark text). Saved as `"theme"` in `config.conf` | Graphite |
 | Rotation | a tap toggles between 0° and 180° (screen upside down) | 0° |
 | Bootscreen time | the countdown on the boot screen, 1–5 s | 3 s |
 | Charge Mode | the actual battery level and charging state (CHARGING, FULL, ON BATTERY or USB · NOT CHARGING); a tap returns to the launcher | — |
+| Idle clock | when the screen dims, it turns black and shows a large clock, the date and the battery, like a phone's lock screen, at a quarter of the brightness (at least 5 %); the first touch or key only wakes the screen. Screen off still turns the backlight off after its time; set Screen off to OFF to keep the clock | on |
+
+![The idle clock on the dimmed screen](images/idle-clock.png)
 
 **INSTALL & STORAGE**
 

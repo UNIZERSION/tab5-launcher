@@ -1,5 +1,6 @@
 #include "l5_ui.h"
 #include <stdio.h>
+#include <time.h>
 #include "l5_board.h"
 #include "l5_config.h"
 #include "esp_log.h"
@@ -30,6 +31,149 @@ static lv_obj_t *overlay(void)
 
 /* ---------- idle dimming and screen off (app.js setVeil / idle timer) ---------- */
 
+/* ---------- the idle clock: on the veil while the screen is dimmed (cfg.idleClock, since 27.10.2026) ---------- */
+
+/* The time in seven-segment digits drawn with lines (no face of the launcher has digits this size, and a font for
+   them would cost 20 KB): each digit 104 x 184 px, the segments that are off faintly, the colon in the accent. */
+#define DIG_W 104
+#define DIG_H 184
+#define DIG_T 18     /* stroke */
+#define DIG_GAP 30   /* between the two digits of the hours and of the minutes */
+#define COLON_W 84   /* between the hours and the minutes, the colon in its middle */
+#define CLOCK_W (4 * DIG_W + 2 * DIG_GAP + COLON_W)
+
+static struct {
+    lv_obj_t *box, *time, *date, *batt;
+    char hhmm[5]; /* "2250", "" while the RTC is not set */
+    int minute;   /* the minute shown, -1 = paint again */
+} C;
+
+/* segments a b c d e f g of 0..9 (bit 0 = a: top, then clockwise, g: middle) */
+static const uint8_t SEGMENTS[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};
+
+static void segment(lv_layer_t *layer, int32_t x0, int32_t y0, int32_t x1, int32_t y1, bool on)
+{
+    lv_draw_line_dsc_t d;
+    lv_draw_line_dsc_init(&d);
+    d.color = L5_WHITE;
+    d.opa = on ? LV_OPA_COVER : 22;
+    d.width = DIG_T;
+    d.round_start = d.round_end = 1;
+    d.p1.x = x0, d.p1.y = y0, d.p2.x = x1, d.p2.y = y1;
+    lv_draw_line(layer, &d);
+}
+
+static void digit(lv_layer_t *layer, int32_t x, int32_t y, int n)
+{
+    const uint8_t m = n >= 0 && n <= 9 ? SEGMENTS[n] : 0x40; /* no time: dashes */
+    const int32_t l = x + DIG_T / 2, r = x + DIG_W - DIG_T / 2, t = y + DIG_T / 2, b = y + DIG_H - DIG_T / 2;
+    const int32_t mid = y + DIG_H / 2, g = DIG_T; /* segments stop short of the corners */
+    segment(layer, l + g, t, r - g, t, m & 0x01);     /* a */
+    segment(layer, r, t + g, r, mid - g, m & 0x02);   /* b */
+    segment(layer, r, mid + g, r, b - g, m & 0x04);   /* c */
+    segment(layer, l + g, b, r - g, b, m & 0x08);     /* d */
+    segment(layer, l, mid + g, l, b - g, m & 0x10);   /* e */
+    segment(layer, l, t + g, l, mid - g, m & 0x20);   /* f */
+    segment(layer, l + g, mid, r - g, mid, m & 0x40); /* g */
+}
+
+static void clock_draw_cb(lv_event_t *e)
+{
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_area_t a;
+    lv_obj_get_coords(lv_event_get_target(e), &a);
+    int32_t x = a.x1;
+    for (int i = 0; i < 4; i++) {
+        digit(layer, x, a.y1, C.hhmm[0] ? C.hhmm[i] - '0' : -1);
+        x += DIG_W + (i == 1 ? COLON_W : DIG_GAP);
+        if (i != 1) continue;
+        for (int k = 0; k < 2; k++) { /* the colon, between the hours and the minutes */
+            lv_draw_rect_dsc_t d;
+            lv_draw_rect_dsc_init(&d);
+            d.bg_color = L5P.accent;
+            d.radius = LV_RADIUS_CIRCLE;
+            const int32_t cx = x - COLON_W / 2, cy = a.y1 + DIG_H * (k ? 70 : 30) / 100;
+            const lv_area_t dot = {cx - DIG_T / 2, cy - DIG_T / 2, cx + DIG_T / 2, cy + DIG_T / 2};
+            lv_draw_rect(layer, &d, &dot);
+        }
+    }
+}
+
+/* time, date and battery: the time only when the minute changed (a redraw of 600 x 184 px) */
+static void clock_paint(void)
+{
+    struct tm t;
+    const bool set = l5_clock_now(&t);
+    const int minute = set ? t.tm_hour * 60 + t.tm_min : -2;
+    if (minute == C.minute) return;
+    C.minute = minute;
+    char d[32];
+    if (set) {
+        snprintf(C.hhmm, sizeof(C.hhmm), "%02u%02u", (unsigned)t.tm_hour % 24u, (unsigned)t.tm_min % 60u);
+        snprintf(d, sizeof(d), "%s \xC2\xB7 %02u.%02u.%04u", l5_days[(unsigned)t.tm_wday % 7u], (unsigned)t.tm_mday % 32u,
+                 (unsigned)(t.tm_mon + 1) % 13u, (unsigned)(t.tm_year + 1900) % 10000u);
+    } else {
+        C.hhmm[0] = 0;
+        snprintf(d, sizeof(d), "RTC NOT SET");
+    }
+    lv_label_set_text(C.date, d);
+    l5_battery_text(d, sizeof(d));
+    lv_label_set_text(C.batt, d);
+    lv_obj_invalidate(C.time);
+}
+
+static void clock_create(lv_obj_t *veil)
+{
+    C.box = l5_box(veil);
+    lv_obj_set_size(C.box, CLOCK_W, LV_SIZE_CONTENT);
+    lv_obj_center(C.box);
+    lv_obj_set_flex_flow(C.box, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(C.box, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(C.box, 22, 0);
+    C.time = l5_box(C.box);
+    lv_obj_set_size(C.time, CLOCK_W, DIG_H);
+    lv_obj_add_event_cb(C.time, clock_draw_cb, LV_EVENT_DRAW_MAIN, NULL);
+    C.date = l5_label(C.box, &l5_mono_22, L5_WHITE, "");
+    lv_obj_set_style_text_letter_space(C.date, 4, 0);
+    lv_obj_set_style_pad_top(C.date, 18, 0);
+    C.batt = l5_label(C.box, &l5_mono_16, L5_MUTED, "");
+    lv_obj_set_style_text_letter_space(C.batt, 3, 0);
+    lv_obj_add_flag(C.box, LV_OBJ_FLAG_HIDDEN);
+    C.minute = -1;
+}
+
+/* The veil: transparent with the dimmed backlight, or black with the clock. Under the black veil the view and the
+   rail are hidden as under a system screen (l5_ui_covered): LVGL 9.3 drew the whole launcher under the top layer at
+   dimming and the view under the time box every minute. */
+static bool s_clock_cover; /* the clock hid them; a system screen that comes next keeps them hidden */
+
+static void clock_show(bool on)
+{
+    if (on != s_clock_cover) {
+        l5_ui_covered(on);
+        s_clock_cover = on;
+    }
+    lv_obj_set_style_bg_opa(s_veil, on ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(s_veil, L5_BLACK, 0);
+    lv_obj_set_flag(C.box, LV_OBJ_FLAG_HIDDEN, !on);
+    if (on) {
+        C.minute = -1;
+        clock_paint();
+    }
+}
+
+int l5_ui_dim_level(int bright, bool clock)
+{
+    if (!clock) return bright * 12 / 100 + 1; /* the launcher under the veil at opacity .88 */
+    const int level = bright / 4 > 5 ? bright / 4 : 5; /* the clock on black: readable at low brightness too */
+    return level < bright ? level : bright;
+}
+
+bool l5_ui_idle_clock(void)
+{
+    return C.box && !lv_obj_has_flag(s_veil, LV_OBJ_FLAG_HIDDEN) && !lv_obj_has_flag(C.box, LV_OBJ_FLAG_HIDDEN);
+}
+
 /* lv_display_enable_invalidation() counts: one pause, one resume */
 static void freeze(bool on)
 {
@@ -49,10 +193,12 @@ static void set_veil(void)
         lv_obj_remove_flag(s_veil, LV_OBJ_FLAG_HIDDEN);
         freeze(true);
     } else if (s_dimmed) {
-        l5_board_backlight(g_cfg.bright * 12 / 100 + 1); /* veil opacity .88 */
+        l5_board_backlight(l5_ui_dim_level(g_cfg.bright, g_cfg.idleClock));
+        clock_show(g_cfg.idleClock);
         lv_obj_remove_flag(s_veil, LV_OBJ_FLAG_HIDDEN);
     } else {
         l5_board_backlight(g_cfg.bright);
+        clock_show(false);
         lv_obj_add_flag(s_veil, LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -84,6 +230,7 @@ static void veil_cb(lv_event_t *e)
 static void idle_cb(lv_timer_t *t)
 {
     (void)t;
+    if (s_dimmed && !s_off && l5_ui_idle_clock()) clock_paint(); /* a new minute */
     uint32_t idle = lv_display_get_inactive_time(NULL);
     if (g_cfg.screenOff > 0 && !s_off && s_booted && idle > g_cfg.screenOff * 1000u) { /* also with Dim time OFF */
         ESP_LOGI("l5_ui", "screen off after %u s without touch: the next tap only wakes", (unsigned)g_cfg.screenOff);
@@ -106,6 +253,7 @@ void l5_ui_set_booted(bool booted)
     if (!booted) { /* a system screen (bootscreen, starting, restart, off, charge) is drawn and seen */
         bool dark = s_dimmed || s_off;
         s_dimmed = s_off = false;
+        s_clock_cover = false; /* the system screen covers the launcher now; l5_sys_hide() shows it again */
         freeze(false);
         lv_obj_add_flag(s_veil, LV_OBJ_FLAG_HIDDEN);
         if (dark) l5_board_backlight(g_cfg.bright);
@@ -139,6 +287,7 @@ void l5_ui_init(void)
     s_veil = overlay();
     lv_obj_add_flag(s_veil, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_event_cb(s_veil, veil_cb, LV_EVENT_PRESSED, NULL);
+    clock_create(s_veil);
     lv_timer_create(idle_cb, 1000, NULL);
     lv_timer_create(prebuild_cb, 200, NULL);
 }

@@ -34,11 +34,13 @@ static struct {
     lv_obj_t *dot[MAX_CARDS];
     lv_obj_t *pick;             /* "BOOTS" on the selected card */
     lv_obj_t *line, *name, *boot;
+    lv_obj_t *panel;            /* the whole view: the top of its gradient takes the tint of the app in the middle */
     int n, center;
 } H;
 
 /* the card in the middle, kept over rebuilds (an install or an erase rebuilds HOME); -1: the boot app */
 static int s_center = -1;
+static bool s_keep_place; /* l5_home_keep_place(): the next build keeps s_center in the middle */
 static lv_style_t s_boots; /* the boot app's card: an accent frame (a glow would be drawn again on every scroll step) */
 
 static void upper(char *dst, const char *src, size_t len)
@@ -144,10 +146,23 @@ static void paint_foot(void)
     }
 }
 
+/* the top of the panel's gradient (L5S.dark: PANEL_2 -> PANEL) with the icon's tint of the app in the middle over it */
+static void paint_tint(int c)
+{
+    lv_color_t tint;
+    const l5_slot_t *s = c >= 0 && c < H.n ? &g_slots.slot[c] : NULL;
+    if (s && s->used && l5_appicon_colors(s->project, NULL, &tint)) {
+        lv_obj_set_style_bg_color(H.panel, l5_mix(tint, L5_PANEL_2, 70), 0); /* 27 %: a glow, the cards stay apart */
+    } else {
+        lv_obj_remove_local_style_prop(H.panel, LV_STYLE_BG_COLOR, 0);
+    }
+}
+
 static void paint_center(int c)
 {
     H.center = c;
     s_center = c;
+    paint_tint(c);
     for (int i = 0; i < H.n; i++) {
         if (H.shade[i]) lv_obj_set_flag(H.shade[i], LV_OBJ_FLAG_HIDDEN, i == c);
         if (H.more[i]) lv_obj_set_flag(H.more[i], LV_OBJ_FLAG_HIDDEN, i != c);
@@ -183,6 +198,7 @@ static void paint_selection(void)
         lv_obj_move_to_index(H.shade[g_slots.boot], -1); /* the shade stays on top of the badge */
     }
     paint_foot();
+    l5_cfg_accent_follow(); /* CFG > UI color APP: another boot app, another accent */
 }
 
 static void home_deleted_cb(lv_event_t *e)
@@ -323,7 +339,7 @@ static void used_card(lv_obj_t *card, int i)
     l5_dither_hook(card);
     lv_obj_t *col = inner_column(card);
     char t[96];
-    l5_cover_create(col, COVER, s->name, s->name, s->author[0] ? s->author : "ESP32-P4 APP", i, true);
+    l5_cover_create(col, COVER, s->name, s->name, s->author[0] ? s->author : "ESP32-P4 APP", i, true, s->project);
 
     lv_obj_t *name = l5_label(col, &l5_chakra_b28, L5_ON_PANEL, s->name);
     lv_obj_set_style_pad_top(name, 6, 0);
@@ -487,9 +503,18 @@ bool l5_home_key(const l5_key_t *k)
     return true;
 }
 
-/* the card in the middle when HOME is built: the boot app, else the one before the rebuild, else the first app */
+void l5_home_keep_place(void)
+{
+    s_keep_place = true;
+}
+
+/* the card in the middle when HOME is built: the one before when only icons changed, else the boot app, else the
+   one before the rebuild, else the first app */
 static int first_center(int n)
 {
+    const bool keep = s_keep_place;
+    s_keep_place = false;
+    if (keep && s_center >= 0 && s_center < n) return s_center;
     if (l5_slots_boot_app() && g_slots.boot < n) return g_slots.boot;
     if (s_center >= 0 && s_center < n) return s_center;
     for (int i = 0; i < n; i++) {
@@ -512,11 +537,13 @@ void l5_home_render(lv_obj_t *view)
     lv_style_set_border_color(&s_boots, L5P.accent); /* CFG > UI color can change it */
     lv_obj_clean(view);
     memset(&H, 0, sizeof(H));
+    l5_appicon_refresh(); /* icons and about.txt on the card: HOME is drawn again when one changed */
     const int n = g_slots.n < MAX_CARDS ? g_slots.n : MAX_CARDS;
     H.n = n;
 
     /* #hmMain.dark.vw-col.chamfer: the whole view right of the rail */
     lv_obj_t *panel = l5_box(view);
+    H.panel = panel;
     lv_obj_add_event_cb(panel, home_deleted_cb, LV_EVENT_DELETE, NULL);
     l5_panel(panel, true);
     lv_obj_set_pos(panel, L5_GAP, L5_PANEL_Y);

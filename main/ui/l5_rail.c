@@ -225,6 +225,21 @@ int l5_rail_battery(void)
     return s_batt;
 }
 
+const char *const l5_days[7] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+
+bool l5_clock_now(struct tm *t)
+{
+    const time_t now = time(NULL);
+    localtime_r(&now, t);
+    return t->tm_year + 1900 >= 2024;
+}
+
+void l5_battery_text(char *out, size_t len)
+{
+    if (s_batt >= 0) snprintf(out, len, "BATTERY %d%%", s_batt);
+    else snprintf(out, len, "USB");
+}
+
 void l5_rail_apply_accent(void)
 {
     lv_obj_set_style_text_color(s_logo_accent, L5P.accent, 0);
@@ -251,13 +266,10 @@ static void set_text(lv_obj_t *l, const char *t)
 
 void l5_rail_paint_status(void)
 {
-    static const char *DAYS[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
-    time_t now = time(NULL);
     struct tm t;
-    localtime_r(&now, &t);
     char d[24], h[8];
-    if (t.tm_year + 1900 >= 2024) {
-        snprintf(d, sizeof(d), "%02d.%02d %s", t.tm_mon + 1, t.tm_mday, DAYS[t.tm_wday]);
+    if (l5_clock_now(&t)) {
+        snprintf(d, sizeof(d), "%02d.%02d %s", t.tm_mon + 1, t.tm_mday, l5_days[t.tm_wday]);
         snprintf(h, sizeof(h), "%02d:%02d", t.tm_hour, t.tm_min);
     } else {
         snprintf(d, sizeof(d), "RTC NOT SET");

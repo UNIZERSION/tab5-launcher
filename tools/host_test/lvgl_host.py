@@ -50,6 +50,11 @@ def run_all(jobs):
         sys.exit('\n'.join(errors[:5]))
 
 
+# lodepng as the top-level CMakeLists.txt builds it for the firmware: the PC tests decode with the same code
+# (their PNG files come from ui_shots.test_pngs(), not from lodepng's encoder)
+LODEPNG = ['-DLODEPNG_NO_COMPILE_ENCODER', '-DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS', '-DLODEPNG_NO_COMPILE_ERROR_TEXT']
+
+
 def build(cc):
     """compiles what is stale; returns (flags, LVGL objects without lv_font_fmt_txt, its object as shipped,
     its object as patched)"""
@@ -57,7 +62,7 @@ def build(cc):
     os.makedirs(cache, exist_ok=True)
     conf = host_sdkconfig()
     conf_path = os.path.join(cache, 'host_sdkconfig.h')
-    stamp = hashlib.sha1((conf + ' '.join(cc)).encode()).hexdigest()
+    stamp = hashlib.sha1((conf + ' '.join(cc + LODEPNG)).encode()).hexdigest()
     if not os.path.exists(conf_path) or open(conf_path, encoding='utf-8').read() != conf or \
             not os.path.exists(os.path.join(cache, stamp)):
         for f in os.listdir(cache):
@@ -65,7 +70,7 @@ def build(cc):
         open(conf_path, 'w', encoding='utf-8').write(conf)
         open(os.path.join(cache, stamp), 'w').close()
     flags = cc + ['-std=gnu11', '-O1', '-w', '-I' + cache, '-I' + LVGL,
-                  '-DLV_CONF_KCONFIG_EXTERNAL_INCLUDE="host_sdkconfig.h"']
+                  '-DLV_CONF_KCONFIG_EXTERNAL_INCLUDE="host_sdkconfig.h"'] + LODEPNG
 
     def stale(obj, src):
         return not os.path.exists(obj) or os.path.getmtime(obj) < os.path.getmtime(src)
