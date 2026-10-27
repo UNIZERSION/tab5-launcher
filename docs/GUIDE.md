@@ -383,28 +383,27 @@ The keyboard opens for the Wi-Fi password, the OTA search and ADD LINK (name and
 
 **M5Stack Tab5 Keyboard**
 
-With the M5Stack Tab5 Keyboard plugged into the side port, the whole launcher works from its keys, with the shortcuts of a computer (since 27.10.2026). A frame in the accent color shows the menu item, button or CFG row that **Enter** takes. **F1** (or **?**) shows the shortcuts of the tab you are in.
+With the M5Stack Tab5 Keyboard plugged into the side port, the whole launcher works from its keys (since 27.10.2026). The keyboard has no F-keys, Home / End or PgUp / PgDn, so the launcher uses its own keys: **Ctrl+↑ / ↓** = a page up / down, **Alt+↑ / ↓** = the first / last row (in a text field **Alt+← / →** = the start / end), **?** (sym + the !? key) or **Ctrl+H** = the shortcuts of the tab you are in. A frame in the accent color shows the menu item, button or CFG row that **Enter** takes.
 
-![The shortcuts (F1) in the SD tab](images/keys-help.png)
+![The shortcuts (? or Ctrl+H) in the SD tab](images/keys-help.png)
 
 | Where | Keys |
 |---|---|
-| Everywhere | **Alt+1** … **Alt+5**: HOME, SD, OTA, PMAN, CFG. **Tab** / **Shift+Tab** or **Ctrl+→** / **Ctrl+←**: next / previous tab. **F5**: the tab again (re-reads the card, the partition table). **F1** or **?**: the shortcuts. On a dimmed or dark screen the first key only wakes it, like the first tap. |
+| Everywhere | **1** … **5**: HOME, SD, OTA, PMAN, CFG; the digit of the tab you are in reads it again (the card, the partition table). **Tab** or **Ctrl+→** / **Ctrl+←**: next / previous tab. **?** or **Ctrl+H**: the shortcuts. On a dimmed or dark screen the first key only wakes it, like the first tap. |
 | Boot screen | **Enter** = START NOW, **Space** stops the countdown, **1**–**4** = the apps on the chips, **Esc** and any other key = LAUNCHER |
 | HOME | one app: **Enter** = BOOT (on the empty card: the SD tab). Several apps: **← ↑** / **→ ↓** choose the previous / next installed app as the one that starts after the boot screen, **Enter** = BOOT |
-| SD | **↑ ↓**, **Home / End**, **PgUp / PgDn** (8 rows) select. **Typing a name** selects it: the letters typed less than a second apart make its beginning (upper / lower case does not matter), the same letter again goes to the next name with it. **Enter**: a folder opens, a .bin that the side panel offers to install = INSTALL, a text file = VIEW. **Esc** or **Backspace** = UP, **Delete** = DELETE, **Ctrl+C** COPY, **Ctrl+X** CUT (then PASTE moves it; config.conf can only be copied), **Ctrl+V** PASTE, **F2** or **Ctrl+R** RENAME, **Ctrl+N** NEW FOLDER |
-| OTA | **↑ ↓**, **Home / End**, **PgUp / PgDn** (6 rows) select, **Enter** = INSTALL, **/** or **Ctrl+F** = search. Without Wi-Fi: **Enter** = CONNECT (after a Wi-Fi failure WHY NO WI-FI; nothing while it connects) |
-| PMAN | **↑ ↓** (or **← →**), **Home / End** select a partition. **Enter** = a menu of its actions (only the ones it allows), **F2** = RESIZE, **Delete** = DELETE. **Ctrl+S** the scheme list, **Ctrl+O** OPTIMIZE FLASH, **Ctrl+A** AUTO PARTITION, **Ctrl+K** SANITY CHECK |
-| CFG | **↑ ↓**, **Home / End** move the frame over the rows of the three columns. **Enter** = a tap on the row. **← →** = − / + on the rows with steps, previous / next UI color or theme |
-| Menus | **↑ ↓**, **Tab / Shift+Tab**, **Home / End** move the frame, **Enter** picks, **Esc** closes |
-| Dialogs with buttons | **← →** or **Tab / Shift+Tab** move the frame over the buttons. **Enter** = the framed button, without a frame the main (right) one; a greyed-out button does nothing. **Esc** = the cancel button, if the dialog has one. **↑ ↓ PgUp PgDn Home End** scroll a long text |
+| SD | **↑ ↓** select, **Ctrl+↑ / ↓** by 8 rows, **Alt+↑ / ↓** the first / last. **Typing letters** selects a name: the letters typed less than a second apart make its beginning (upper / lower case does not matter), the same letter again goes to the next name with it (the digits switch tabs: a name that starts with one is found with the arrows). **Enter**: a folder opens, a .bin that the side panel offers to install = INSTALL, a text file = VIEW. **Esc** or **Backspace** = UP, **Del** = DELETE, **Ctrl+C** COPY, **Ctrl+X** CUT (then PASTE moves it; config.conf can only be copied), **Ctrl+V** PASTE, **Ctrl+R** RENAME, **Ctrl+N** NEW FOLDER |
+| OTA | **↑ ↓** select, **Ctrl+↑ / ↓** by 6 rows, **Alt+↑ / ↓** the first / last, **Enter** = INSTALL, **/** or **Ctrl+F** = search. Without Wi-Fi: **Enter** = CONNECT (after a Wi-Fi failure WHY NO WI-FI; nothing while it connects) |
+| PMAN | **↑ ↓** (or **← →**) select a partition, **Alt+↑ / ↓** the first / last. **Enter** = a menu of its actions (only the ones it allows), **Ctrl+R** = RESIZE, **Del** = DELETE. **Ctrl+S** the scheme list, **Ctrl+O** OPTIMIZE FLASH, **Ctrl+A** AUTO PARTITION, **Ctrl+K** SANITY CHECK |
+| CFG | **↑ ↓**, **Alt+↑ / ↓** move the frame over the rows of the three columns. **Enter** = a tap on the row. **← →** = − / + on the rows with steps, previous / next UI color or theme |
+| Menus | **↑ ↓**, **Tab**, **Alt+↑ / ↓** move the frame, **Enter** picks, **Esc** closes |
+| Dialogs with buttons | **← →** or **Tab** move the frame over the buttons. **Enter** = the framed button, without a frame the main (right) one; a greyed-out button does nothing. **Esc** = the cancel button, if the dialog has one. **↑ ↓**, **Ctrl+↑ / ↓** and **Alt+↑ / ↓** scroll a long text |
 | Progress | **Esc** = CANCEL |
-| VIEW (text) | **Enter** / **Esc** close it, the arrows, **PgUp / PgDn** and **Home / End** scroll |
-| Text field | opens in the middle of the screen without the on-screen keys, with the line "KEYBOARD · ENTER = OK · ESC = CANCEL · F1 = KEYS · TAP THE FIELD FOR ON-SCREEN KEYS" and CANCEL / OK. It edits as on a computer: characters type at the cursor (with Shift and Aa as on the keyboard's legends), **← →** and **Home / End** move it, **Ctrl+← / →** by a word, **Backspace** / **Delete** erase before / after it, **Ctrl+Backspace** / **Ctrl+Delete** a whole word, **Ctrl+U** = CLEAR, **Ctrl+C** / **Ctrl+X** copy / cut the whole text (not a password), **Ctrl+V** pastes, **Enter** = OK, **Esc** = CANCEL. **Polish letters**: **Alt** (right or left) + **a c e l n o s x z** = ą ć ę ł ń ó ś ź ż, with **Shift** the capitals. A tap on the field brings back the on-screen keys. |
+| VIEW (text) | **Enter** / **Esc** close it, the arrows and **Ctrl+↑ / ↓** scroll, **Alt+↑ / ↓** to the top / end |
+| Text field | opens in the middle of the screen without the on-screen keys, with the line "KEYBOARD · ENTER = OK · ESC = CANCEL · CTRL+H = KEYS · TAP THE FIELD FOR ON-SCREEN KEYS" and CANCEL / OK. It edits as on a computer: characters type at the cursor (with Shift and Aa as on the keyboard's legends), **← →** move it, **Alt+← / →** to the start / end, **Ctrl+← / →** by a word, **Backspace** / **Del** erase before / after it, **Ctrl+Backspace** / **Ctrl+Delete** a whole word, **Ctrl+U** = CLEAR, **Ctrl+C** / **Ctrl+X** copy / cut the whole text (not a password), **Ctrl+V** pastes, **Enter** = OK, **Esc** = CANCEL. **Polish letters**: **Alt** + **a c e l n o s x z** = ą ć ę ł ń ó ś ź ż, with **Aa** the capitals. A tap on the field brings back the on-screen keys. |
 | Charge Mode | **Enter** / **Esc** back to the launcher |
 
-- Held keys repeat (after 0.45 s, then every 60 ms, at most 10 s): characters (Polish letters too), Backspace, Delete, arrows, Home / End, PgUp / PgDn; not Enter, Esc, Tab, the F-keys or keys with Ctrl / Alt.
-- If your keyboard has no F-keys, **?** shows the shortcuts and **Ctrl+R** renames.
+- Held keys repeat (after 0.45 s, then every 60 ms, at most 10 s): characters (Polish letters too), Backspace, Del, the arrows, Ctrl+↑ / ↓ and Alt+arrows; not Enter, Esc, Tab or other keys with Ctrl / Alt.
 - The keyboard can be plugged in or pulled out at any time: the launcher looks for it every 2 s. Before an app starts, the launcher releases the keyboard's bus; the keyboard stays in HID mode.
 
 ## Safeguards

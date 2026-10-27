@@ -4,9 +4,10 @@
    - an open dialog, menu or keyboard (#layer): the topmost one gets the key as the LVGL event l5_key_event(), the key
      as its parameter (l5_dialogs.c, l5_keyboard.c);
    - a system screen (#sys): l5_sys_key(), the bootscreen enters the launcher, Charge Mode exits on Enter / Esc;
-   - otherwise Tab / Shift+Tab and Ctrl+Right / Ctrl+Left switch tabs, Alt+1..5 opens HOME, SD, OTA, PMAN, CFG,
-     F1 or ? shows the shortcuts (l5_keys_help), F5 builds the tab again as a tap on it does, everything else goes
-     to the visible tab (HOME, SD, OTA, PMAN, CFG). */
+   - otherwise Tab / Shift+Tab and Ctrl+Right / Ctrl+Left switch tabs, 1..5 (with Alt too) open HOME, SD, OTA, PMAN,
+     CFG and the visible tab's own digit builds it again as a tap on it does (also F5), ? or Ctrl+H (F1) shows the
+     shortcuts (l5_keys_help), everything else goes to the visible tab (HOME, SD, OTA, PMAN, CFG). The Tab5 Keyboard
+     has no F-keys and its Alt is far from the digits: single digits are the tabs (SD's type-to-find takes letters). */
 #include <stdio.h>
 #include "l5_kbd.h"
 #include "l5_ui.h"
@@ -38,8 +39,8 @@ static void dispatch(const l5_key_t *k)
         l5_sys_key(k);
         return;
     }
-    if (k->kind == L5_KEY_CHAR && k->alt && !k->ctrl && k->ch >= '1' && k->ch < '1' + L5_VIEW_COUNT) {
-        l5_ui_go((l5_view_t)(k->ch - '1')); /* the rail's order */
+    if (k->kind == L5_KEY_CHAR && !k->ctrl && k->ch >= '1' && k->ch < '1' + L5_VIEW_COUNT) {
+        l5_ui_go((l5_view_t)(k->ch - '1')); /* the rail's order; the visible tab's digit builds it again */
         return;
     }
     if (k->kind == L5_KEY_F1 || (k->kind == L5_KEY_CHAR && k->ch == '?' && !k->ctrl && !k->alt)) {
@@ -70,7 +71,7 @@ static void dispatch(const l5_key_t *k)
     }
 }
 
-/* F1 / ?: what the keys do everywhere, in this tab, in text fields and on the bootscreen */
+/* ? / Ctrl+H: what the keys of the Tab5 Keyboard do everywhere, in this tab, in text fields and on the bootscreen */
 void l5_keys_help(void)
 {
     static const char *const TAB[L5_VIEW_COUNT] = {
@@ -78,31 +79,32 @@ void l5_keys_help(void)
         "Left / Right, Up / Down: the previous / next app starts after the bootscreen\n"
         "Enter: BOOT the app in the middle",
         "SD\n"
-        "Up / Down, Home / End, PgUp / PgDn: select \xC2\xB7 type a name: jump to it\n"
-        "Enter: open, install a .bin, view a text \xC2\xB7 Esc / Backspace: folder up\n"
-        "Ctrl+C copy \xC2\xB7 Ctrl+X cut \xC2\xB7 Ctrl+V paste \xC2\xB7 F2 / Ctrl+R rename\n"
-        "Ctrl+N new folder \xC2\xB7 Delete: delete",
+        "Up / Down: select \xC2\xB7 Ctrl+Up / Down: 8 rows \xC2\xB7 Alt+Up / Down: first / last\n"
+        "type letters: jump to a name \xC2\xB7 Enter: open, install a .bin, view a text\n"
+        "Esc / Backspace: folder up \xC2\xB7 Del: delete \xC2\xB7 Ctrl+R rename \xC2\xB7 Ctrl+N new folder\n"
+        "Ctrl+C copy \xC2\xB7 Ctrl+X cut \xC2\xB7 Ctrl+V paste",
         "OTA\n"
-        "Up / Down, Home / End, PgUp / PgDn: select \xC2\xB7 Enter: open\n"
-        "/ or Ctrl+F: search",
+        "Up / Down: select \xC2\xB7 Ctrl+Up / Down: a page \xC2\xB7 Alt+Up / Down: first / last\n"
+        "Enter: open \xC2\xB7 / or Ctrl+F: search",
         "PMAN\n"
-        "Up / Down, Home / End: select a partition \xC2\xB7 Enter: its actions\n"
-        "F2 resize \xC2\xB7 Delete: delete \xC2\xB7 Ctrl+S scheme \xC2\xB7 Ctrl+O optimize\n"
+        "Up / Down: select a partition \xC2\xB7 Alt+Up / Down: first / last \xC2\xB7 Enter: its actions\n"
+        "Ctrl+R resize \xC2\xB7 Del: delete \xC2\xB7 Ctrl+S scheme \xC2\xB7 Ctrl+O optimize\n"
         "Ctrl+A auto partition \xC2\xB7 Ctrl+K sanity check",
         "CFG\n"
         "Up / Down: a row \xC2\xB7 Left / Right: change it \xC2\xB7 Enter: switch or open",
     };
     static const char FMT[] =
              "EVERYWHERE\n"
-             "Alt+1 \xE2\x80\xA6 5: HOME, SD, OTA, PMAN, CFG \xC2\xB7 Tab / Shift+Tab: next / previous tab\n"
-             "F5: this tab again \xC2\xB7 F1 or ?: this help \xC2\xB7 Enter: OK \xC2\xB7 Esc: close\n\n"
+             "1 \xE2\x80\xA6 5: HOME, SD, OTA, PMAN, CFG (the same digit again: read the tab again)\n"
+             "Tab or Ctrl+Left / Right: next / previous tab \xC2\xB7 ? or Ctrl+H: this help\n"
+             "Enter: OK \xC2\xB7 Esc: close\n\n"
              "%s\n\n"
              "TEXT FIELDS\n"
-             "Left / Right, Home / End: move \xC2\xB7 Ctrl+Left / Right: a word\n"
-             "Backspace / Delete: erase \xC2\xB7 Ctrl+Backspace: a word \xC2\xB7 Ctrl+U: clear\n"
-             "Ctrl+C / Ctrl+X: copy / cut all \xC2\xB7 Ctrl+V: paste\n"
+             "Left / Right: move \xC2\xB7 Alt+Left / Right: start / end \xC2\xB7 Ctrl+Left / Right: a word\n"
+             "Backspace / Del: erase \xC2\xB7 Ctrl+Backspace: a word \xC2\xB7 Ctrl+U: clear\n"
+             "Ctrl+C / Ctrl+X: copy / cut all \xC2\xB7 Ctrl+V: paste \xC2\xB7 Ctrl+H: this help\n"
              "Alt + a c e l n o s x z: \xC4\x85 \xC4\x87 \xC4\x99 \xC5\x82 \xC5\x84 \xC3\xB3 \xC5\x9B \xC5\xBA "
-             "\xC5\xBC (with Shift: capitals)\n\n"
+             "\xC5\xBC (with Aa: capitals)\n\n"
              "BOOTSCREEN\n"
              "Enter: START NOW \xC2\xB7 Esc: LAUNCHER \xC2\xB7 Space: stop the countdown \xC2\xB7 1 \xE2\x80\xA6 4: the "
              "other apps";
@@ -111,7 +113,7 @@ void l5_keys_help(void)
     char *body = len > 0 ? lv_malloc((size_t)len + 1) : NULL;
     if (!body) return;
     snprintf(body, (size_t)len + 1, FMT, tab);
-    l5_text_dialog("Shortcuts", "UP / DOWN, PGUP / PGDN SCROLL", body, 1, lv_free); /* long: it scrolls */
+    l5_text_dialog("Shortcuts", "UP / DOWN, CTRL+UP / DOWN SCROLL", body, 1, lv_free); /* long: it scrolls */
 }
 
 static void timer_cb(lv_timer_t *t)

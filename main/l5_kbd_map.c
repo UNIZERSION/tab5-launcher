@@ -56,6 +56,18 @@ bool l5_kbd_map(uint8_t mod, uint8_t usage, l5_key_t *out)
         default: return false; /* Caps Lock, Insert...: nothing in the launcher */
         }
     }
+    /* the M5Stack Tab5 Keyboard has no F-keys, Home / End or PgUp / PgDn (5 rows: Esc 1..0 - + Del, symbols, Tab
+       q..p ; ' Backspace, sym Aa a..l Up _ Enter, Ctrl Alt z..m . Left Down Right Space): Ctrl+H = F1 (the shortcuts),
+       Ctrl+Up / Down = PgUp / PgDn, Alt+Up / Left = Home, Alt+Down / Right = End */
+    if (k.kind == L5_KEY_CHAR && k.ctrl && !k.alt && (k.ch | 0x20) == 'h') {
+        k = (l5_key_t){.kind = L5_KEY_F1};
+    } else if (k.ctrl && !k.alt && (k.kind == L5_KEY_UP || k.kind == L5_KEY_DOWN)) {
+        k.kind = k.kind == L5_KEY_UP ? L5_KEY_PGUP : L5_KEY_PGDN;
+        k.ctrl = false;
+    } else if (k.alt && !k.ctrl && k.kind >= L5_KEY_LEFT && k.kind <= L5_KEY_DOWN) {
+        k.kind = k.kind == L5_KEY_UP || k.kind == L5_KEY_LEFT ? L5_KEY_HOME : L5_KEY_END;
+        k.alt = false;
+    }
     *out = k;
     return true;
 }

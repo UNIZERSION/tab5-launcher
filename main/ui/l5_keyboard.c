@@ -17,7 +17,7 @@
 #include "l5_ui.h"
 
 #define DOT "\xC2\xB7"
-#define HW_HINT "KEYBOARD " DOT " ENTER = OK " DOT " ESC = CANCEL " DOT " F1 = KEYS " DOT " TAP THE FIELD FOR ON-SCREEN KEYS"
+#define HW_HINT "KEYBOARD " DOT " ENTER = OK " DOT " ESC = CANCEL " DOT " CTRL+H = KEYS " DOT " TAP THE FIELD FOR ON-SCREEN KEYS"
 
 #define ROWS 5
 #define COLS 11

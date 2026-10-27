@@ -1444,6 +1444,9 @@ static void index_cb(int index, void *user) { (void)user; s_index = index; }
 static void id_cb(const char *id, void *user) { (void)user; strlcpy(s_id, id ? id : "-", sizeof(s_id)); }
 static void text_cb(const char *text, void *user) { (void)user; strlcpy(s_text, text ? text : "-", sizeof(s_text)); }
 
+static const char *sd_sel(void);
+static void sd_open(const char *cwd, const char *select);
+
 static void global_keys2(void)
 {
     ALT('2');
@@ -1469,7 +1472,25 @@ static void global_keys2(void)
     ALT('2');
     FKEY(5);
     EXPECT(l5_ui_view() == L5_VIEW_SD && !layer_n(), "F5 = the tab again (view %d)", l5_ui_view());
-    ALT('1');
+    /* the Tab5 Keyboard has no F-keys: single digits are the tabs, the visible tab's digit reads it again */
+    CHR('3');
+    EXPECT(l5_ui_view() == L5_VIEW_OTA, "3 = OTA (view %d)", l5_ui_view());
+    CHR('5');
+    EXPECT(l5_ui_view() == L5_VIEW_CFG, "5 = CFG (view %d)", l5_ui_view());
+    sd_open(CARD, NULL);
+    char dir[400];
+    snprintf(dir, sizeof(dir), "%s/qq_digit", CARD); /* on the card after SD was read: only a new reading lists it */
+    mkdir(dir, 0777);
+    CHR('2');
+    CHR('q');
+    EXPECT(l5_ui_view() == L5_VIEW_SD && !layer_n() && !strcmp(sd_sel(), "qq_digit"),
+           "2 in SD = the card read again (view %d, %s)", l5_ui_view(), sd_sel());
+    rmdir(dir);
+    CHR('6');
+    CTRL('2');
+    EXPECT(l5_ui_view() == L5_VIEW_SD, "6 and Ctrl+2 open no tab (view %d)", l5_ui_view());
+    CHR('1');
+    EXPECT(l5_ui_view() == L5_VIEW_HOME, "1 = HOME (view %d)", l5_ui_view());
 }
 
 static void global_keys(void)
@@ -1922,6 +1943,19 @@ static void kbd_map_keys(void)
     EXPECT(l5_kbd_map(0, 0x3E, &k) && !l5_kbd_repeats(&k), "map: F5 does not repeat");
     EXPECT(l5_kbd_map(0x40, 0x04, &k) && l5_kbd_repeats(&k), "map: a Polish letter repeats like any letter");
     EXPECT(!l5_kbd_map(0, 0x39, &k), "map: Caps Lock is not a key of the launcher");
+    /* the Tab5 Keyboard's own keys for what it lacks: Ctrl+H = F1, Ctrl+Up / Down = PgUp / PgDn, Alt+arrows = Home /
+       End; plain arrows and Ctrl+Left / Right stay as they are */
+    EXPECT(l5_kbd_map(0x01, 0x0B, &k) && k.kind == L5_KEY_F1 && !k.ctrl, "map: Ctrl+H = F1");
+    EXPECT(l5_kbd_map(0x01, 0x52, &k) && k.kind == L5_KEY_PGUP && !k.ctrl && l5_kbd_repeats(&k),
+           "map: Ctrl+Up = PgUp (repeats)");
+    EXPECT(l5_kbd_map(0x01, 0x51, &k) && k.kind == L5_KEY_PGDN, "map: Ctrl+Down = PgDn");
+    EXPECT(l5_kbd_map(0x04, 0x52, &k) && k.kind == L5_KEY_HOME && !k.alt, "map: Alt+Up = Home");
+    EXPECT(l5_kbd_map(0x04, 0x50, &k) && k.kind == L5_KEY_HOME, "map: Alt+Left = Home");
+    EXPECT(l5_kbd_map(0x04, 0x51, &k) && k.kind == L5_KEY_END, "map: Alt+Down = End");
+    EXPECT(l5_kbd_map(0x04, 0x4F, &k) && k.kind == L5_KEY_END, "map: Alt+Right = End");
+    EXPECT(l5_kbd_map(0, 0x52, &k) && k.kind == L5_KEY_UP, "map: Up stays Up");
+    EXPECT(l5_kbd_map(0x01, 0x50, &k) && k.kind == L5_KEY_LEFT && k.ctrl, "map: Ctrl+Left stays (previous tab)");
+    EXPECT(l5_kbd_map(0, 0x0B, &k) && k.kind == L5_KEY_CHAR && k.ch == 'h', "map: h stays a letter");
 }
 
 /* the bootscreen: Space stops the countdown, 1..4 start the chips' apps, Enter = START NOW, Esc = LAUNCHER */
@@ -1964,6 +1998,16 @@ static void pman_keys(void)
     EXPECT(layer_n() == 1, "PMAN: Ctrl+S = the schemes");
     KEY(ESC);
     close_all();
+    /* Ctrl+R = RESIZE (F2) on the first row that allows it */
+    bool resize = false;
+    KEY(HOME);
+    for (int i = 0; i < 10 && !resize; i++) {
+        CTRL('r');
+        resize = layer_n() == 1;
+        close_all();
+        KEY(DOWN);
+    }
+    EXPECT(resize, "PMAN: Ctrl+R = RESIZE");
     ALT('1');
 }
 
@@ -2111,7 +2155,7 @@ static int keys_test(void)
     close_all();
     shots_kbd_present = false;
     int fails = s_fails - before;
-    printf(fails ? "keys: FAILED %d\n" : "keys: tabs, Alt+1..5, F1, F5, wake, dialogs, menus, VIEW, progress, text field "
+    printf(fails ? "keys: FAILED %d\n" : "keys: tabs, 1..5, Alt+1..5, F1 / Ctrl+H / ?, F5 / the tab digit, wake, dialogs, menus, VIEW, progress, text field "
            "with caret and Polish letters, HOME, SD (find, F2, cut), OTA, PMAN, CFG, Charge Mode, bootscreen PASSED\n",
            fails);
     return fails ? 1 : 0;

@@ -1550,8 +1550,8 @@ static bool row_act(const char *action)
     return false;
 }
 
-/* Up / Down (Left / Right), Home / End select a partition; Enter: a menu of its actions; F2 RESIZE, Delete DELETE;
-   Ctrl+S the scheme list, Ctrl+O OPTIMIZE FLASH, Ctrl+A AUTO PARTITION, Ctrl+K SANITY CHECK */
+/* Up / Down (Left / Right), Home / End select a partition; Enter: a menu of its actions; Ctrl+R (F2) RESIZE, Delete
+   DELETE; Ctrl+S the scheme list, Ctrl+O OPTIMIZE FLASH, Ctrl+A AUTO PARTITION, Ctrl+K SANITY CHECK */
 bool l5_pman_key(const l5_key_t *k)
 {
     if (!V.side || !s_nrows || s_busy) return false;
@@ -1584,6 +1584,7 @@ bool l5_pman_key(const l5_key_t *k)
     case L5_KEY_CHAR:
         if (!k->ctrl || k->alt) return false;
         switch (k->ch | 0x20) {
+        case 'r': return row_act("resize"); /* F2 on keyboards that have it */
         case 's': act("scheme"); return true;
         case 'o': act("optimize"); return true;
         case 'a': act("auto"); return true;

@@ -17,14 +17,14 @@ New since the 0.1.0 release (October 2026). It is in the source code here; the b
 - **Colors from the icons:** the background takes the app's color, and the **APP** accent paints the whole launcher in the boot app's color.
 - **Wallpaper from the SD card:** `wallpaper.jpg` or `wallpaper.png` behind the boot screen, HOME and the idle clock.
 - **Idle clock:** a large clock with the date and the battery on the dimmed screen.
-- **Keyboard shortcuts like on a computer** for the M5Stack Tab5 Keyboard: Alt+1…5 for the tabs, F1 for help, F2 rename, F5 refresh, Ctrl+C / X / V, text editing with a cursor, Polish letters with Alt, type-to-find in the SD tab.
+- **Keyboard shortcuts** made for the M5Stack Tab5 Keyboard (it has no F-keys): 1…5 for the tabs, ? or Ctrl+H for help, Ctrl+R rename, Ctrl+↑ / ↓ a page, Ctrl+C / X / V, text editing with a cursor, Polish letters with Alt, type-to-find in the SD tab.
 
 | | |
 |---|---|
 | ![Boot screen with a wallpaper and the countdown ring](docs/images/wallpaper-boot.png)<br>**Boot screen** with the countdown ring and the other apps | ![The idle clock on the dimmed screen](docs/images/idle-clock.png)<br>**Idle clock** on the dimmed screen |
 | ![HOME in the boot app's color (APP accent)](docs/images/home-app-accent.png)<br>**APP accent:** the launcher in the boot app's color | ![HOME carousel with four app slots](docs/images/home-four-slots.png)<br>**HOME carousel** with four app slots |
 | ![Midnight theme](docs/images/theme-midnight.png)<br>**Midnight** theme | ![Daylight theme](docs/images/theme-daylight.png)<br>**Daylight** theme |
-| ![The keyboard shortcuts (F1) in the SD tab](docs/images/keys-help.png)<br>**F1:** the shortcuts of the tab you are in | ![SD file manager with a .bin selected](docs/images/sd.png)<br>**SD:** the card manager |
+| ![The keyboard shortcuts (? or Ctrl+H) in the SD tab](docs/images/keys-help.png)<br>**? or Ctrl+H:** the shortcuts of the tab you are in | ![SD file manager with a .bin selected](docs/images/sd.png)<br>**SD:** the card manager |
 | ![PMAN partition manager](docs/images/pman.png)<br>**PMAN:** the flash partitions | ![CFG settings](docs/images/cfg.png)<br>**CFG:** the settings |
 
 ## Features
