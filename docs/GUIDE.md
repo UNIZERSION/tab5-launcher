@@ -69,7 +69,7 @@ After power-on and after RESET, the launcher always starts first. The boot scree
 - **START NOW** starts the app right away.
 - **A tap anywhere else** stops the countdown (the ring turns gray), so you can choose in peace.
 - **Other apps:** the other installed apps are chips at the bottom (up to four). A tap starts that app now and makes it the one that starts after the boot screen.
-- Any key of the Tab5 Keyboard opens the launcher.
+- Tab5 Keyboard: **Enter** = START NOW, **Space** stops the countdown, **1**–**4** start the apps on the chips, **Esc** and any other key open the launcher.
 - With no app installed, the launcher opens on its own after about 1.5 s.
 - With "Only with button" (CFG) turned on, the launcher opens only if you are touching the screen at startup. Otherwise the app starts right away.
 
@@ -355,24 +355,28 @@ The keyboard opens for the Wi-Fi password, the OTA search and ADD LINK (name and
 
 **M5Stack Tab5 Keyboard**
 
-With the M5Stack Tab5 Keyboard plugged into the side port, the whole launcher works from its keys, as in the build of 2026-10-20. A frame in the accent color shows the menu item, button or CFG row that **Enter** takes.
+With the M5Stack Tab5 Keyboard plugged into the side port, the whole launcher works from its keys, with the shortcuts of a computer (since 27.10.2026). A frame in the accent color shows the menu item, button or CFG row that **Enter** takes. **F1** (or **?**) shows the shortcuts of the tab you are in.
+
+![The shortcuts (F1) in the SD tab](images/keys-help.png)
 
 | Where | Keys |
 |---|---|
-| Everywhere | **Tab** / **Shift+Tab** or **Ctrl+→** / **Ctrl+←**: next / previous tab (PMAN works only by touch). On a dimmed or dark screen the first key only wakes it, like the first tap. |
-| Boot screen | any key = LAUNCHER |
+| Everywhere | **Alt+1** … **Alt+5**: HOME, SD, OTA, PMAN, CFG. **Tab** / **Shift+Tab** or **Ctrl+→** / **Ctrl+←**: next / previous tab. **F5**: the tab again (re-reads the card, the partition table). **F1** or **?**: the shortcuts. On a dimmed or dark screen the first key only wakes it, like the first tap. |
+| Boot screen | **Enter** = START NOW, **Space** stops the countdown, **1**–**4** = the apps on the chips, **Esc** and any other key = LAUNCHER |
 | HOME | one app: **Enter** = BOOT (on the empty card: the SD tab). Several apps: **← ↑** / **→ ↓** choose the previous / next installed app as the one that starts after the boot screen, **Enter** = BOOT |
-| SD | **↑ ↓**, **Home / End**, **PgUp / PgDn** (8 rows) select. **Enter**: a folder opens, a .bin that the side panel offers to install = INSTALL, a text file = VIEW. **Esc** or **Backspace** = UP, **Delete** = DELETE, **Ctrl+C** COPY, **Ctrl+V** PASTE, **Ctrl+R** RENAME, **Ctrl+N** NEW FOLDER |
+| SD | **↑ ↓**, **Home / End**, **PgUp / PgDn** (8 rows) select. **Typing a name** selects it: the letters typed less than a second apart make its beginning (upper / lower case does not matter), the same letter again goes to the next name with it. **Enter**: a folder opens, a .bin that the side panel offers to install = INSTALL, a text file = VIEW. **Esc** or **Backspace** = UP, **Delete** = DELETE, **Ctrl+C** COPY, **Ctrl+X** CUT (then PASTE moves it; config.conf can only be copied), **Ctrl+V** PASTE, **F2** or **Ctrl+R** RENAME, **Ctrl+N** NEW FOLDER |
 | OTA | **↑ ↓**, **Home / End**, **PgUp / PgDn** (6 rows) select, **Enter** = INSTALL, **/** or **Ctrl+F** = search. Without Wi-Fi: **Enter** = CONNECT (after a Wi-Fi failure WHY NO WI-FI; nothing while it connects) |
+| PMAN | **↑ ↓** (or **← →**), **Home / End** select a partition. **Enter** = a menu of its actions (only the ones it allows), **F2** = RESIZE, **Delete** = DELETE. **Ctrl+S** the scheme list, **Ctrl+O** OPTIMIZE FLASH, **Ctrl+A** AUTO PARTITION, **Ctrl+K** SANITY CHECK |
 | CFG | **↑ ↓**, **Home / End** move the frame over the rows of the three columns. **Enter** = a tap on the row. **← →** = − / + on the rows with steps, previous / next UI color or theme |
 | Menus | **↑ ↓**, **Tab / Shift+Tab**, **Home / End** move the frame, **Enter** picks, **Esc** closes |
 | Dialogs with buttons | **← →** or **Tab / Shift+Tab** move the frame over the buttons. **Enter** = the framed button, without a frame the main (right) one; a greyed-out button does nothing. **Esc** = the cancel button, if the dialog has one. **↑ ↓ PgUp PgDn Home End** scroll a long text |
 | Progress | **Esc** = CANCEL |
 | VIEW (text) | **Enter** / **Esc** close it, the arrows, **PgUp / PgDn** and **Home / End** scroll |
-| Text field | opens in the middle of the screen without the on-screen keys, with the line "KEYBOARD · ENTER = OK · ESC = CANCEL · TAP THE FIELD FOR ON-SCREEN KEYS" and CANCEL / OK. Characters type (with Shift and Aa as on the keyboard's legends), **Backspace** and **Delete** delete the last character, **Ctrl+U** = CLEAR, **Enter** = OK, **Esc** = CANCEL. A tap on the field brings back the on-screen keys. |
+| Text field | opens in the middle of the screen without the on-screen keys, with the line "KEYBOARD · ENTER = OK · ESC = CANCEL · F1 = KEYS · TAP THE FIELD FOR ON-SCREEN KEYS" and CANCEL / OK. It edits as on a computer: characters type at the cursor (with Shift and Aa as on the keyboard's legends), **← →** and **Home / End** move it, **Ctrl+← / →** by a word, **Backspace** / **Delete** erase before / after it, **Ctrl+Backspace** / **Ctrl+Delete** a whole word, **Ctrl+U** = CLEAR, **Ctrl+C** / **Ctrl+X** copy / cut the whole text (not a password), **Ctrl+V** pastes, **Enter** = OK, **Esc** = CANCEL. **Polish letters**: **Alt** (right or left) + **a c e l n o s x z** = ą ć ę ł ń ó ś ź ż, with **Shift** the capitals. A tap on the field brings back the on-screen keys. |
 | Charge Mode | **Enter** / **Esc** back to the launcher |
 
-- Held keys repeat (after 0.45 s, then every 60 ms, at most 10 s): characters, Backspace, Delete, arrows, Home / End, PgUp / PgDn; not Enter, Esc, Tab or keys with Ctrl / Alt.
+- Held keys repeat (after 0.45 s, then every 60 ms, at most 10 s): characters (Polish letters too), Backspace, Delete, arrows, Home / End, PgUp / PgDn; not Enter, Esc, Tab, the F-keys or keys with Ctrl / Alt.
+- If your keyboard has no F-keys, **?** shows the shortcuts and **Ctrl+R** renames.
 - The keyboard can be plugged in or pulled out at any time: the launcher looks for it every 2 s. Before an app starts, the launcher releases the keyboard's bus; the keyboard stays in HID mode.
 
 ## Safeguards
@@ -448,7 +452,7 @@ Every time it starts, the launcher turns on the battery charger (RESET turns it 
 - **Wi-Fi**: no access point (AP) mode, no switch between the internal and external (MMCX) antenna, and no ESP32-C6 firmware update.
 - **PMAN**: OPTIMIZE FLASH erases apps instead of moving them. For data partitions (SPIFFS, FAT), USED shows only EMPTY / IN USE, without percentages. PMAN does not change tables that do not follow the launcher's rules (UNMANAGED), and with flash encryption enabled, the launcher refuses to change the table.
 - **Installing**: after you change the scheme with the USE ‹scheme› button in the "App slot too small" dialog, you have to pick the file again after the restart. AUTO PARTITION in the check dialog installs without this interruption.
-- **Keyboard**: no "€" character and no pasting. On the M5Stack Tab5 Keyboard the text field has no cursor to move (the arrows do nothing there) and PMAN has no keys.
+- **Keyboard**: no "€" character. Text fields have no selection (Ctrl+C / Ctrl+X take the whole text), and the on-screen keys type at the cursor but cannot move it.
 
 **Known bugs**
 

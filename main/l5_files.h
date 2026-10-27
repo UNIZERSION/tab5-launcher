@@ -22,6 +22,10 @@ extern const char *l5_files_root;
 bool l5_files_name_ok(char *name, char *why, size_t len);
 /* one entry for FAT: names that differ only in letter case (FatFs' own case folding on the Tab5) */
 bool l5_files_same_name(const char *a, const char *b);
+/* the character c as UTF-8 in out (1..4 bytes, no terminator): the number of bytes */
+size_t l5_files_utf8(char *out, uint32_t c);
+/* name begins with prefix, letter case ignored as FatFs folds it (SD: typing a name finds it) */
+bool l5_files_starts_with(const char *name, const char *prefix);
 /* uniq() of the prototype: `name` when nothing in `dir` has it, else "<base>-copy<ext>",
    "<base>-copy2<ext>", ... (extension from the last dot). False when no free name fits. */
 bool l5_files_unique(const char *dir, const char *name, char *out, size_t len);

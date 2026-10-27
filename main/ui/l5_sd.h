@@ -23,5 +23,6 @@ void l5_sd_after_op(const char *cwd, const char *select);
 void l5_sd_paint_clip(void); /* clipboard line in the foot and the PASTE chip, in place */
 
 /* l5_sd_ops.c */
-void l5_sd_action(const char *id); /* "copy" "paste" "rename" "mkdir" "delete" "view" */
+void l5_sd_action(const char *id); /* "copy" "cut" "paste" "rename" "mkdir" "delete" "view" */
 const char *l5_sd_clip_name(void); /* NULL while the clipboard is empty */
+bool l5_sd_clip_cut(void);         /* the clipboard came from CUT: PASTE moves it */

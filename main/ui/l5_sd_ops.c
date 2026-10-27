@@ -24,9 +24,11 @@ static const char *TAG = "l5_sd";
 #define PAINT_EVERY_MS 150 /* progress updates from the worker */
 #define NAME_MAX_CHARS 128 /* keyboard limit for names (FAT allows 255) */
 
-/* R.sd.clip: COPY keeps the path, PASTE copies it into the folder that is open then */
+/* R.sd.clip: COPY keeps the path, PASTE copies it into the folder that is open then; CUT (Ctrl+X) keeps it too,
+   and PASTE moves it there (a rename on the same card: no copying) and empties the clipboard */
 static struct {
     char path[L5_FILES_PATH];
+    bool cut;
 } s_clip;
 
 typedef enum { JOB_PASTE, JOB_COUNT_DELETE, JOB_DELETE, JOB_VIEW } job_op_t;
@@ -86,6 +88,11 @@ static const char *hidden_note(const char *name, bool dir)
 const char *l5_sd_clip_name(void)
 {
     return s_clip.path[0] ? base_name(s_clip.path) : NULL;
+}
+
+bool l5_sd_clip_cut(void)
+{
+    return s_clip.path[0] && s_clip.cut;
 }
 
 /* the clipboard follows a rename of itself or of a folder it is in, and goes with a delete */
@@ -552,8 +559,42 @@ static void copy_action(void)
     l5_sd_target_t t;
     if (!l5_sd_target(&t) || t.is_cwd) return; /* COPY takes the selected entry */
     strlcpy(s_clip.path, t.path, sizeof(s_clip.path));
+    s_clip.cut = false;
     l5_sd_paint_clip();
     l5_toast("Copied %s \xC2\xB7 open a folder and tap PASTE", t.name);
+}
+
+static void cut_action(void)
+{
+    l5_sd_target_t t;
+    if (!l5_sd_target(&t) || t.is_cwd) return;
+    if (!t.dir && l5_files_same_name(t.path, L5_CONFIG_PATH)) { /* the launcher would start with defaults */
+        l5_toast("config.conf stays where it is: COPY it instead");
+        return;
+    }
+    strlcpy(s_clip.path, t.path, sizeof(s_clip.path));
+    s_clip.cut = true;
+    l5_sd_paint_clip();
+    l5_toast("Cut %s \xC2\xB7 open a folder and PASTE moves it there", t.name);
+}
+
+/* PASTE after CUT: the entry goes into this folder under its name (or a free one) */
+static void move_clip(const char *cwd, const char *name, bool dir)
+{
+    char to[L5_FILES_PATH], parent[L5_FILES_PATH], why[200] = "The new path is too long for the card.";
+    if (l5_files_parent(s_clip.path, parent, sizeof(parent)) && l5_files_same_name(parent, cwd)) {
+        l5_toast("%s is in this folder already", base_name(s_clip.path));
+        return;
+    }
+    if (!l5_files_join(to, sizeof(to), cwd, name) || l5_files_rename(s_clip.path, to, why, sizeof(why)) != ESP_OK) {
+        l5_info("SD", "Not moved", why);
+        return;
+    }
+    s_clip.path[0] = 0;
+    s_clip.cut = false;
+    l5_sd_paint_clip();
+    l5_toast("Moved here: %s%s", name, hidden_note(name, dir));
+    l5_sd_after_op(NULL, name);
 }
 
 static void paste_action(void)
@@ -578,6 +619,10 @@ static void paste_action(void)
     if (!l5_files_unique(cwd, src, name, sizeof(name)) || !l5_files_join(J.dst, sizeof(J.dst), cwd, name)) {
         snprintf(s_body, sizeof(s_body), "No free name for %s fits into this folder.", src);
         l5_info("PASTE", "Cannot paste here", s_body);
+        return;
+    }
+    if (s_clip.cut) {
+        move_clip(cwd, name, S_ISDIR(st.st_mode));
         return;
     }
     strlcpy(J.src, s_clip.path, sizeof(J.src));
@@ -645,6 +690,8 @@ void l5_sd_action(const char *id)
     if (J.busy || l5_install_busy()) return;
     if (!strcmp(id, "copy")) {
         copy_action();
+    } else if (!strcmp(id, "cut")) {
+        cut_action();
     } else if (!strcmp(id, "paste")) {
         paste_action();
     } else if (!strcmp(id, "rename")) {

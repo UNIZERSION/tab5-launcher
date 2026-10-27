@@ -4,8 +4,10 @@
    - an open dialog, menu or keyboard (#layer): the topmost one gets the key as the LVGL event l5_key_event(), the key
      as its parameter (l5_dialogs.c, l5_keyboard.c);
    - a system screen (#sys): l5_sys_key(), the bootscreen enters the launcher, Charge Mode exits on Enter / Esc;
-   - otherwise Tab / Shift+Tab and Ctrl+Right / Ctrl+Left switch tabs, everything else goes to the visible tab
-     (HOME, SD, OTA, CFG; PMAN is touch only). */
+   - otherwise Tab / Shift+Tab and Ctrl+Right / Ctrl+Left switch tabs, Alt+1..5 opens HOME, SD, OTA, PMAN, CFG,
+     F1 or ? shows the shortcuts (l5_keys_help), F5 builds the tab again as a tap on it does, everything else goes
+     to the visible tab (HOME, SD, OTA, PMAN, CFG). */
+#include <stdio.h>
 #include "l5_kbd.h"
 #include "l5_ui.h"
 
@@ -36,6 +38,18 @@ static void dispatch(const l5_key_t *k)
         l5_sys_key(k);
         return;
     }
+    if (k->kind == L5_KEY_CHAR && k->alt && !k->ctrl && k->ch >= '1' && k->ch < '1' + L5_VIEW_COUNT) {
+        l5_ui_go((l5_view_t)(k->ch - '1')); /* the rail's order */
+        return;
+    }
+    if (k->kind == L5_KEY_F1 || (k->kind == L5_KEY_CHAR && k->ch == '?' && !k->ctrl && !k->alt)) {
+        l5_keys_help(); /* '?' is not a letter of FAT names: SD's type-to-find never needs it */
+        return;
+    }
+    if (k->kind == L5_KEY_F(5)) {
+        l5_ui_go(l5_ui_view()); /* the active tab again: re-reads the card, the partition table, the catalog */
+        return;
+    }
     int dir = 0;
     if (k->kind == L5_KEY_TAB && !k->ctrl && !k->alt) {
         dir = k->shift ? -1 : 1;
@@ -50,9 +64,54 @@ static void dispatch(const l5_key_t *k)
     case L5_VIEW_HOME: l5_home_key(k); break;
     case L5_VIEW_SD: l5_sd_key(k); break;
     case L5_VIEW_OTA: l5_ota_key(k); break;
+    case L5_VIEW_PMAN: l5_pman_key(k); break;
     case L5_VIEW_CFG: l5_cfg_key(k); break;
     default: break;
     }
+}
+
+/* F1 / ?: what the keys do everywhere, in this tab, in text fields and on the bootscreen */
+void l5_keys_help(void)
+{
+    static const char *const TAB[L5_VIEW_COUNT] = {
+        "HOME\n"
+        "Left / Right, Up / Down: the previous / next app starts after the bootscreen\n"
+        "Enter: BOOT the app in the middle",
+        "SD\n"
+        "Up / Down, Home / End, PgUp / PgDn: select \xC2\xB7 type a name: jump to it\n"
+        "Enter: open, install a .bin, view a text \xC2\xB7 Esc / Backspace: folder up\n"
+        "Ctrl+C copy \xC2\xB7 Ctrl+X cut \xC2\xB7 Ctrl+V paste \xC2\xB7 F2 / Ctrl+R rename\n"
+        "Ctrl+N new folder \xC2\xB7 Delete: delete",
+        "OTA\n"
+        "Up / Down, Home / End, PgUp / PgDn: select \xC2\xB7 Enter: open\n"
+        "/ or Ctrl+F: search",
+        "PMAN\n"
+        "Up / Down, Home / End: select a partition \xC2\xB7 Enter: its actions\n"
+        "F2 resize \xC2\xB7 Delete: delete \xC2\xB7 Ctrl+S scheme \xC2\xB7 Ctrl+O optimize\n"
+        "Ctrl+A auto partition \xC2\xB7 Ctrl+K sanity check",
+        "CFG\n"
+        "Up / Down: a row \xC2\xB7 Left / Right: change it \xC2\xB7 Enter: switch or open",
+    };
+    static const char FMT[] =
+             "EVERYWHERE\n"
+             "Alt+1 \xE2\x80\xA6 5: HOME, SD, OTA, PMAN, CFG \xC2\xB7 Tab / Shift+Tab: next / previous tab\n"
+             "F5: this tab again \xC2\xB7 F1 or ?: this help \xC2\xB7 Enter: OK \xC2\xB7 Esc: close\n\n"
+             "%s\n\n"
+             "TEXT FIELDS\n"
+             "Left / Right, Home / End: move \xC2\xB7 Ctrl+Left / Right: a word\n"
+             "Backspace / Delete: erase \xC2\xB7 Ctrl+Backspace: a word \xC2\xB7 Ctrl+U: clear\n"
+             "Ctrl+C / Ctrl+X: copy / cut all \xC2\xB7 Ctrl+V: paste\n"
+             "Alt + a c e l n o s x z: \xC4\x85 \xC4\x87 \xC4\x99 \xC5\x82 \xC5\x84 \xC3\xB3 \xC5\x9B \xC5\xBA "
+             "\xC5\xBC (with Shift: capitals)\n\n"
+             "BOOTSCREEN\n"
+             "Enter: START NOW \xC2\xB7 Esc: LAUNCHER \xC2\xB7 Space: stop the countdown \xC2\xB7 1 \xE2\x80\xA6 4: the "
+             "other apps";
+    const char *tab = TAB[l5_ui_view() < L5_VIEW_COUNT ? l5_ui_view() : 0];
+    const int len = snprintf(NULL, 0, FMT, tab); /* as long as the text is: nothing is cut */
+    char *body = len > 0 ? lv_malloc((size_t)len + 1) : NULL;
+    if (!body) return;
+    snprintf(body, (size_t)len + 1, FMT, tab);
+    l5_text_dialog("Shortcuts", "UP / DOWN, PGUP / PGDN SCROLL", body, 1, lv_free); /* long: it scrolls */
 }
 
 static void timer_cb(lv_timer_t *t)

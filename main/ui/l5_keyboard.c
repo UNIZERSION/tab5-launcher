@@ -1,17 +1,23 @@
 /* U.keyboard (ui.js): on-screen keyboard over the whole screen, panel at the bottom (.kb-wrap,
    .kb). l5_keyboard() returns at once and the text arrives in the callback, NULL for CANCEL, like
    the prototype's promise. Two layouts (abc, ?123), one-shot SHIFT, masked input with SHOW / HIDE.
-   The field shows the end of the text when it gets longer than the field.
+   Text is typed at the caret; the field shows the text around it ("..." where it is cut) when it is longer than
+   the field.
    With the M5Stack Tab5 Keyboard plugged in (l5_kbd.c) the panel sits in the middle of the screen with only the
-   field and a bar (hint, CANCEL, OK). Its keys (l5_keys.c sends them here as l5_key_event()): characters type,
-   Backspace and Delete erase the last character, Ctrl+U = CLEAR, Enter = OK, Esc = CANCEL, the rest does nothing.
-   A tap on the field brings the on-screen keys; plugging the keyboard in or pulling it out switches the layout. */
+   field and a bar (hint, CANCEL, OK). Its keys (l5_keys.c sends them here as l5_key_event()) edit as on a
+   computer: characters type at the caret (Alt + a c e l n o s x z: Polish letters), Left / Right and Home / End
+   move it, Ctrl+Left / Right by a word, Backspace / Delete erase before / after it, Ctrl+Backspace / Delete a word,
+   Ctrl+U = CLEAR, Ctrl+C / Ctrl+X copy / cut the whole text (not a password), Ctrl+V pastes, Enter = OK,
+   Esc = CANCEL, F1 the shortcuts. A tap on the field brings the on-screen keys; plugging the keyboard in or pulling
+   it out switches the layout. */
+#include <stdio.h>
 #include <string.h>
+#include "l5_files.h"
 #include "l5_kbd.h"
 #include "l5_ui.h"
 
 #define DOT "\xC2\xB7"
-#define HW_HINT "KEYBOARD " DOT " ENTER = OK " DOT " ESC = CANCEL " DOT " TAP THE FIELD FOR ON-SCREEN KEYS"
+#define HW_HINT "KEYBOARD " DOT " ENTER = OK " DOT " ESC = CANCEL " DOT " F1 = KEYS " DOT " TAP THE FIELD FOR ON-SCREEN KEYS"
 
 #define ROWS 5
 #define COLS 11
@@ -54,9 +60,10 @@ typedef struct {
     char *text;  /* UTF-8 */
     char *dots;  /* mask: one bullet per character */
     size_t len, cap;
+    size_t pos;  /* the caret: a byte index of text, on a character boundary */
     uint16_t chars, max_chars;
     bool shift, sym, mask, show;
-    lv_obj_t *wrap, *field, *tx, *caret, *eye;
+    lv_obj_t *wrap, *field, *tx, *caret, *tx2, *eye; /* tx before the caret, tx2 after it */
     lv_obj_t *key[ROWS][COLS];
     lv_obj_t *kb;         /* the panel */
     lv_obj_t *row[ROWS];
@@ -67,6 +74,7 @@ typedef struct {
 } kb_t;
 
 static lv_style_t s_key, s_key_fn, s_key_pr, s_key_ok;
+static char s_clip[64 * 4 + 1]; /* Ctrl+C / Ctrl+X of a text field, Ctrl+V in any of them */
 static lv_font_t s_font_fn, s_font_field;
 
 static int fn_index(const char *key)
@@ -148,25 +156,46 @@ static void caret_on(kb_t *k)
     lv_timer_reset(k->blink);
 }
 
+static int32_t width(const char *s, size_t n)
+{
+    return lv_text_get_width(s, (uint32_t)n, &s_font_field, 0);
+}
+
+/* the text before the caret in tx, after it in tx2; too long: the part next to the caret, cut with "..." */
 static void paint(kb_t *k)
 {
-    const char *shown = k->text;
+    const char *all = k->text;
+    size_t split = k->pos;
     if (k->mask && !k->show) {
         size_t n = 0;
         for (uint16_t i = 0; i < k->chars; i++, n += 3) memcpy(&k->dots[n], "\xE2\x80\xA2", 3);
         k->dots[n] = '\0';
-        shown = k->dots;
+        split = 0;
+        for (const char *s = k->text; s < k->text + k->pos; s = utf8_next(s)) split += 3;
+        all = k->dots;
     }
-    int32_t room = lv_obj_get_content_width(k->field) - lv_obj_get_width(k->caret) - 2;
-    if (lv_text_get_width(shown, strlen(shown), &s_font_field, 0) > room) {
-        int32_t ell = lv_text_get_width("\xE2\x80\xA6", 3, &s_font_field, 0);
-        while (*shown && lv_text_get_width(shown, strlen(shown), &s_font_field, 0) > room - ell) {
-            shown = utf8_next(shown);
+    const size_t n = strlen(all);
+    const int32_t room = lv_obj_get_content_width(k->field) - lv_obj_get_width(k->caret) - 4;
+    const int32_t wb = width(all, split), wa = width(all + split, n - split);
+    size_t from = 0, after = n - split; /* shown: all[from..split) and all[split..split + after) */
+    bool cut_b = false, cut_a = false;
+    if (wb + wa > room) {
+        const int32_t ell = width("\xE2\x80\xA6", 3);
+        int32_t ra = room - wb > room / 3 ? room - wb : room / 3; /* the text after the caret gets a third at least */
+        if (ra > wa) ra = wa;
+        const int32_t rb = room - ra;
+        while (wa > ra && after && width(all + split, after) > ra - ell) { /* from the right */
+            after--;
+            while (after && ((uint8_t)all[split + after] & 0xC0) == 0x80) after--;
+            cut_a = true;
         }
-        lv_label_set_text_fmt(k->tx, "\xE2\x80\xA6%s", shown);
-    } else {
-        lv_label_set_text(k->tx, shown);
+        while (wb > rb && from < split && width(all + from, split - from) > rb - ell) { /* from the left */
+            from = (size_t)(utf8_next(all + from) - all);
+            cut_b = true;
+        }
     }
+    lv_label_set_text_fmt(k->tx, "%s%.*s", cut_b ? "\xE2\x80\xA6" : "", (int)(split - from), all + from);
+    lv_label_set_text_fmt(k->tx2, "%.*s%s", (int)after, all + split, cut_a ? "\xE2\x80\xA6" : "");
     if (k->eye) lv_label_set_text(lv_obj_get_child(k->eye, 0), k->show ? "HIDE" : "SHOW");
     caret_on(k);
 }
@@ -193,14 +222,51 @@ static void relabel(kb_t *k)
     }
 }
 
+/* one character (UTF-8) at the caret */
 static void append(kb_t *k, const char *s)
 {
     size_t n = strlen(s);
     if (k->chars >= k->max_chars || k->len + n >= k->cap) return; /* maxLen */
-    memcpy(&k->text[k->len], s, n + 1);
+    memmove(&k->text[k->pos + n], &k->text[k->pos], k->len - k->pos + 1);
+    memcpy(&k->text[k->pos], s, n);
     k->len += n;
+    k->pos += n;
     k->chars++;
 }
+
+/* text[from..to) goes */
+static void erase(kb_t *k, size_t from, size_t to)
+{
+    if (to <= from) return;
+    for (const char *s = k->text + from; s < k->text + to; s = utf8_next(s)) k->chars--;
+    memmove(&k->text[from], &k->text[to], k->len - to + 1);
+    k->len -= to - from;
+    if (k->pos > to) k->pos -= to - from;
+    else if (k->pos > from) k->pos = from;
+}
+
+static size_t prev_char(const kb_t *k, size_t i)
+{
+    while (i > 0 && ((uint8_t)k->text[--i] & 0xC0) == 0x80) {
+    }
+    return i;
+}
+
+/* Ctrl+Left / Right: to the start of the word before, or past the word after (words end at spaces) */
+static size_t word_left(const kb_t *k, size_t i)
+{
+    while (i > 0 && k->text[prev_char(k, i)] == ' ') i = prev_char(k, i);
+    while (i > 0 && k->text[prev_char(k, i)] != ' ') i = prev_char(k, i);
+    return i;
+}
+
+static size_t word_right(const kb_t *k, size_t i)
+{
+    while (i < k->len && k->text[i] != ' ') i = (size_t)(utf8_next(k->text + i) - k->text);
+    while (i < k->len && k->text[i] == ' ') i++;
+    return i;
+}
+
 
 static void close_kb(kb_t *k, bool ok)
 {
@@ -226,15 +292,11 @@ static void press(kb_t *k, const char *key)
         return;
     }
     if (!strcmp(key, "BKSP")) {
-        while (k->len > 0) {
-            k->len--;
-            if ((k->text[k->len] & 0xC0) != 0x80) break;
-        }
-        k->text[k->len] = '\0';
-        if (k->chars) k->chars--;
+        erase(k, prev_char(k, k->pos), k->pos);
     } else if (!strcmp(key, "CLEAR")) {
         k->text[0] = '\0';
         k->len = k->chars = 0;
+        k->pos = 0;
     } else if (!strcmp(key, "SHIFT")) {
         k->shift = !k->shift;
         relabel(k);
@@ -294,21 +356,50 @@ static void kb_key_cb(lv_event_t *e)
     kb_t *k = lv_event_get_user_data(e);
     const l5_key_t *key = lv_event_get_param(e);
     switch (key->kind) {
-    case L5_KEY_ENTER: press(k, "OK"); break;      /* k is gone */
-    case L5_KEY_ESC: press(k, "CANCEL"); break;    /* k is gone */
-    case L5_KEY_BACKSPACE:
-    case L5_KEY_DELETE: press(k, "BKSP"); break;
+    case L5_KEY_ENTER: press(k, "OK"); return;      /* k is gone */
+    case L5_KEY_ESC: press(k, "CANCEL"); return;    /* k is gone */
+    case L5_KEY_F1: l5_keys_help(); return;
+    case L5_KEY_BACKSPACE: erase(k, key->ctrl ? word_left(k, k->pos) : prev_char(k, k->pos), k->pos); break;
+    case L5_KEY_DELETE:
+        erase(k, k->pos, key->ctrl ? word_right(k, k->pos) : (size_t)(utf8_next(k->text + k->pos) - k->text));
+        break;
+    case L5_KEY_LEFT: k->pos = key->ctrl ? word_left(k, k->pos) : prev_char(k, k->pos); break;
+    case L5_KEY_RIGHT:
+        k->pos = key->ctrl ? word_right(k, k->pos) : (size_t)(utf8_next(k->text + k->pos) - k->text);
+        break;
+    case L5_KEY_HOME: k->pos = 0; break;
+    case L5_KEY_END: k->pos = k->len; break;
     case L5_KEY_CHAR:
         if (key->ctrl) {
-            if ((key->ch & 0xDF) == 'U') press(k, "CLEAR"); /* Ctrl+U, as in a shell */
+            switch (key->ch | 0x20) {
+            case 'u': press(k, "CLEAR"); return; /* Ctrl+U, as in a shell */
+            case 'c':
+            case 'x': /* the whole text: the field has no selection */
+                if (k->mask) return; /* a password stays where it is */
+                snprintf(s_clip, sizeof(s_clip), "%s", k->text);
+                if ((key->ch | 0x20) == 'x') press(k, "CLEAR");
+                l5_toast((key->ch | 0x20) == 'x' ? "Text cut" : "Text copied");
+                return;
+            case 'v':
+                for (const char *s = s_clip; *s; s = utf8_next(s)) { /* as typed: up to the field's limit */
+                    char c[5] = {0};
+                    memcpy(c, s, (size_t)(utf8_next(s) - s) < 4 ? (size_t)(utf8_next(s) - s) : 4);
+                    append(k, c);
+                }
+                break;
+            default: return;
+            }
         } else if (!key->alt) {
-            const char s[2] = {key->ch, '\0'};
+            char s[5] = {0};
+            l5_files_utf8(s, l5_key_char(key));
             append(k, s);
-            paint(k);
+        } else {
+            return;
         }
         break;
-    default: break;
+    default: return;
     }
+    paint(k);
 }
 
 /* the caret; plugging the keyboard in or pulling it out switches the layout */
@@ -378,7 +469,7 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
     k->cap = strlen(value) + k->max_chars * 4u + 1;
     k->text = lv_zalloc(k->cap);
     strcpy(k->text, value);
-    k->len = strlen(value);
+    k->len = k->pos = strlen(value); /* the caret after the text */
     k->chars = utf8_count(value);
     if (k->mask) k->dots = lv_zalloc((k->chars > k->max_chars ? k->chars : k->max_chars) * 3u + 1);
 
@@ -427,9 +518,11 @@ void l5_keyboard(const l5_keyboard_opts_t *opts, l5_keyboard_cb_t cb, void *user
     k->tx = l5_label(k->field, &s_font_field, L5_ON_PANEL, "");
     k->caret = l5_box(k->field);
     lv_obj_set_size(k->caret, 2, 30);
-    lv_obj_set_style_margin_left(k->caret, 2, 0);
+    lv_obj_set_style_margin_left(k->caret, 1, 0);
+    lv_obj_set_style_margin_right(k->caret, 1, 0);
     lv_obj_set_style_bg_opa(k->caret, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(k->caret, L5P.accent, 0);
+    k->tx2 = l5_label(k->field, &s_font_field, L5_ON_PANEL, "");
     if (k->mask) { /* SHOW / HIDE */
         k->eye = key_obj(k, top, true, EYE_ID);
         lv_obj_set_size(k->eye, 110, 56);

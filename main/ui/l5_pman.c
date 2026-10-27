@@ -1112,9 +1112,8 @@ static void create_data(const row_t *r)
 
 /* ---------- UI ---------- */
 
-static void act_cb(lv_event_t *e)
+static void act(const char *a)
 {
-    const char *a = lv_event_get_user_data(e);
     const row_t *r = find_row(s_sel);
     if (strcmp(a, "scheme") == 0) l5_pman_pick_scheme();
     else if (strcmp(a, "auto") == 0) pick_bin(true);
@@ -1128,6 +1127,39 @@ static void act_cb(lv_event_t *e)
     else if (strcmp(a, "restore") == 0) l5_pman_restore(r->p->label);
     else if (strcmp(a, "resize") == 0) resize(r);
     else if (strcmp(a, "delete") == 0) delete_data(r);
+}
+
+static void act_cb(lv_event_t *e)
+{
+    act(lv_event_get_user_data(e));
+}
+
+/* the side pane's actions for a row, and whether each can run now (the keyboard's menu offers the same) */
+typedef struct {
+    const char *icon, *text, *action;
+    bool enabled, wide, danger;
+} row_act_t;
+
+static int row_actions(const row_t *r, row_act_t out[5])
+{
+    const l5_part_t *p = r ? r->p : NULL;
+    const bool fixed = r && r->fixed, app = app_slot(p), data = pool_data(p), managed = s_map.managed;
+    if (!r) return 0;
+    if (!p) {
+        const l5_layout_t l = base();
+        const bool gap = r->offset >= L5_GAP_ADDR;
+        out[0] = (row_act_t){L5_ICON_PLUS, "CREATE PARTITION", "create",
+                             managed && (gap ? !l.spiffs_kb : !l.fat_kb && free_kb() >= L5_MIN_DATA_KB), true, false};
+        return 1;
+    }
+    const l5_layout_t now = base();
+    const bool fat = data && p->subtype == ESP_PARTITION_SUBTYPE_DATA_FAT && !gap_part(p) && extra_index(&now, p->label) < 0;
+    out[0] = (row_act_t){L5_ICON_TRASH, "FORMAT", "format", !fixed && (app || l5_part_editable(p->label)), false, true};
+    out[1] = (row_act_t){L5_ICON_PMAN, "RESIZE", "resize", managed && (app || fat), false, false};
+    out[2] = (row_act_t){L5_ICON_INSTALL, "BACKUP", "backup", data, false, false};
+    out[3] = (row_act_t){L5_ICON_RESTART, "RESTORE", "restore", data, false, false};
+    out[4] = (row_act_t){L5_ICON_TRASH, "DELETE", "delete", managed && data, true, true};
+    return 5;
 }
 
 static void side_pane(lv_obj_t *s, const row_t *r);
@@ -1395,7 +1427,7 @@ static void kv_row(lv_obj_t *parent, const char *k, const char *v)
 static void side_pane(lv_obj_t *s, const row_t *r)
 {
     const l5_part_t *p = r ? r->p : NULL;
-    bool free_row = r && !p, fixed = r && r->fixed, app = app_slot(p), data = pool_data(p);
+    bool free_row = r && !p, fixed = r && r->fixed, app = app_slot(p);
 
     lv_obj_t *h = l5_box(s); /* .side-head */
     lv_obj_set_size(h, lv_pct(100), LV_SIZE_CONTENT);
@@ -1480,19 +1512,85 @@ static void side_pane(lv_obj_t *s, const row_t *r)
     lv_obj_set_style_pad_row(acts, 12, 0);
     lv_obj_set_style_pad_column(acts, 10, 0);
     lv_obj_set_flex_flow(acts, LV_FLEX_FLOW_ROW_WRAP);
-    bool managed = s_map.managed;
-    if (free_row) {
-        const l5_layout_t l = base();
-        bool can = managed && (gap ? !l.spiffs_kb : !l.fat_kb && free_kb() >= L5_MIN_DATA_KB);
-        side_act(acts, L5_ICON_PLUS, "CREATE PARTITION", "create", can, true);
-    } else {
-        const l5_layout_t now = base();
-        bool fat = data && p->subtype == ESP_PARTITION_SUBTYPE_DATA_FAT && !gap_part(p) && extra_index(&now, p->label) < 0;
-        side_act(acts, L5_ICON_TRASH, "FORMAT", "format", !fixed && (app || l5_part_editable(p->label)), false);
-        side_act(acts, L5_ICON_PMAN, "RESIZE", "resize", managed && (app || fat), false);
-        side_act(acts, L5_ICON_INSTALL, "BACKUP", "backup", data, false);
-        side_act(acts, L5_ICON_RESTART, "RESTORE", "restore", data, false);
-        side_act(acts, L5_ICON_TRASH, "DELETE", "delete", managed && data, true);
+    row_act_t ra[5];
+    const int nra = row_actions(r, ra);
+    for (int i = 0; i < nra; i++) side_act(acts, ra[i].icon, ra[i].text, ra[i].action, ra[i].enabled, ra[i].wide);
+}
+
+/* ---------- keys of the Tab5 Keyboard (l5_keys.c) ---------- */
+
+static void select_index(int i)
+{
+    if (i < 0 || i >= s_nrows) return;
+    const row_t *r = &s_rows[i];
+    strlcpy(s_sel, row_label(r), sizeof(s_sel));
+    paint_sel(r);
+    if (V.tr[i]) lv_obj_scroll_to_view(V.tr[i], LV_ANIM_OFF);
+    lv_obj_clean(V.side);
+    side_pane(V.side, r);
+}
+
+static void menu_cb(const char *id, void *user)
+{
+    (void)user;
+    if (id) act(id);
+}
+
+/* an action of the side pane, only when it can run now (as its button is enabled) */
+static bool row_act(const char *action)
+{
+    row_act_t ra[5];
+    const int n = row_actions(find_row(s_sel), ra);
+    for (int i = 0; i < n; i++) {
+        if (!strcmp(ra[i].action, action) && ra[i].enabled) {
+            act(action);
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Up / Down (Left / Right), Home / End select a partition; Enter: a menu of its actions; F2 RESIZE, Delete DELETE;
+   Ctrl+S the scheme list, Ctrl+O OPTIMIZE FLASH, Ctrl+A AUTO PARTITION, Ctrl+K SANITY CHECK */
+bool l5_pman_key(const l5_key_t *k)
+{
+    if (!V.side || !s_nrows || s_busy) return false;
+    const row_t *sel = find_row(s_sel);
+    const int i = sel ? (int)(sel - s_rows) : -1;
+    switch (k->kind) {
+    case L5_KEY_UP:
+    case L5_KEY_LEFT: select_index(i > 0 ? i - 1 : 0); return true;
+    case L5_KEY_DOWN:
+    case L5_KEY_RIGHT: select_index(i < s_nrows - 1 ? i + 1 : s_nrows - 1); return true;
+    case L5_KEY_HOME: select_index(0); return true;
+    case L5_KEY_END: select_index(s_nrows - 1); return true;
+    case L5_KEY_F(2): return row_act("resize");
+    case L5_KEY_DELETE: return row_act("delete");
+    case L5_KEY_ENTER: {
+        row_act_t ra[5];
+        l5_menu_item_t items[5];
+        int n = 0;
+        const int nra = row_actions(sel, ra);
+        for (int j = 0; j < nra; j++) {
+            if (ra[j].enabled) items[n++] = (l5_menu_item_t){ra[j].action, ra[j].icon, ra[j].text, ra[j].danger};
+        }
+        if (!n) {
+            l5_toast("Nothing to do with %s", sel ? row_label(sel) : "this row");
+            return true;
+        }
+        l5_menu("PMAN", sel ? row_label(sel) : "PARTITION", items, n, menu_cb, NULL);
+        return true;
+    }
+    case L5_KEY_CHAR:
+        if (!k->ctrl || k->alt) return false;
+        switch (k->ch | 0x20) {
+        case 's': act("scheme"); return true;
+        case 'o': act("optimize"); return true;
+        case 'a': act("auto"); return true;
+        case 'k': act("sanity"); return true;
+        default: return false;
+        }
+    default: return false;
     }
 }
 

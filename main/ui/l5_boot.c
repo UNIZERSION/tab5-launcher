@@ -51,11 +51,23 @@ void l5_enter_launcher(void)
     l5_ui_show(L5_VIEW_HOME); /* built at start: shown, not built a second time */
 }
 
+static void stop_cb(lv_event_t *e);
+
+/* Enter = START NOW, Space stops the countdown, 1..4 start the chips' apps, Esc and every other key = LAUNCHER */
 bool l5_boot_screen_key(const l5_key_t *k)
 {
-    (void)k;
     if (!B.up) return false;
-    l5_enter_launcher();
+    const bool plain = !k->ctrl && !k->alt;
+    if (k->kind == L5_KEY_ENTER && B.app) {
+        l5_boot_app();
+    } else if (k->kind == L5_KEY_CHAR && plain && k->ch == ' ' && B.app) {
+        stop_cb(NULL);
+    } else if (k->kind == L5_KEY_CHAR && plain && k->ch >= '1' && k->ch < '1' + MAX_CHIPS && B.dot_app[k->ch - '1']) {
+        l5_slots_select((int)(B.dot_app[k->ch - '1'] - g_slots.slot)); /* as a tap on that chip */
+        l5_boot_app();
+    } else {
+        l5_enter_launcher();
+    }
     return true;
 }
 

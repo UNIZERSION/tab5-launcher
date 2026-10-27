@@ -1237,6 +1237,14 @@ static void type_key(uint8_t kind, char ch, bool ctrl, bool shift, bool alt)
 #define CHR(c) type_key(L5_KEY_CHAR, (c), false, false, false)
 #define CTRL(c) type_key(L5_KEY_CHAR, (c), true, false, false)
 #define ALT(c) type_key(L5_KEY_CHAR, (c), false, false, true)
+#define FKEY(n) type_key(L5_KEY_F(n), 0, false, false, false)
+
+/* a Polish letter as the keyboard sends it for Alt + a c e l n o s x z */
+static void type_uc(uint16_t c)
+{
+    shots_kbd_push((l5_key_t){.kind = L5_KEY_CHAR, .uc = c});
+    settle(40);
+}
 
 static int layer_n(void)
 {
@@ -1261,6 +1269,34 @@ static void ok_cb(bool ok, void *user) { (void)user; s_ok = ok; }
 static void index_cb(int index, void *user) { (void)user; s_index = index; }
 static void id_cb(const char *id, void *user) { (void)user; strlcpy(s_id, id ? id : "-", sizeof(s_id)); }
 static void text_cb(const char *text, void *user) { (void)user; strlcpy(s_text, text ? text : "-", sizeof(s_text)); }
+
+static void global_keys2(void)
+{
+    ALT('2');
+    EXPECT(l5_ui_view() == L5_VIEW_SD, "Alt+2 = SD (view %d)", l5_ui_view());
+    ALT('4');
+    EXPECT(l5_ui_view() == L5_VIEW_PMAN, "Alt+4 = PMAN (view %d)", l5_ui_view());
+    ALT('5');
+    EXPECT(l5_ui_view() == L5_VIEW_CFG, "Alt+5 = CFG (view %d)", l5_ui_view());
+    ALT('1');
+    EXPECT(l5_ui_view() == L5_VIEW_HOME, "Alt+1 = HOME (view %d)", l5_ui_view());
+    ALT('2');
+    FKEY(1);
+    EXPECT(layer_n() == 1, "F1 = the shortcuts");
+    if (s_key_shots) shot("54_keys_help_sd");
+    const char *help = label_with(l5_ui_layer(), "EVERYWHERE");
+    EXPECT(help && strstr(help, "Ctrl+N new folder") && strstr(help, "the other apps"),
+           "F1: the whole help, the SD block and the end");
+    KEY(ENTER);
+    CHR('?');
+    EXPECT(layer_n() == 1, "? = the shortcuts");
+    KEY(ENTER);
+    EXPECT(!layer_n(), "Enter closes the shortcuts");
+    ALT('2');
+    FKEY(5);
+    EXPECT(l5_ui_view() == L5_VIEW_SD && !layer_n(), "F5 = the tab again (view %d)", l5_ui_view());
+    ALT('1');
+}
 
 static void global_keys(void)
 {
@@ -1398,10 +1434,14 @@ static lv_obj_t *kb_panel(void)
     return lv_obj_get_child(lv_obj_get_child(l5_ui_layer(), -1), 0);
 }
 
+/* the field: [text before the caret, caret, text after it] */
 static const char *kb_text(void)
 {
+    static char t[600];
     lv_obj_t *field = lv_obj_get_child(lv_obj_get_child(kb_panel(), 0), 1);
-    return lv_label_get_text(lv_obj_get_child(field, 0));
+    snprintf(t, sizeof(t), "%s%s", lv_label_get_text(lv_obj_get_child(field, 0)),
+             lv_label_get_text(lv_obj_get_child(field, 2)));
+    return t;
 }
 
 static bool kb_compact(void)
@@ -1420,8 +1460,10 @@ static void keyboard_keys(void)
     EXPECT(!strcmp(kb_text(), "xab"), "the keys type: %s", kb_text());
     if (s_key_shots) shot("52_keys_keyboard_plugged_in");
     KEY(BACKSPACE);
+    KEY(DELETE); /* nothing after the caret */
+    KEY(LEFT);
     KEY(DELETE);
-    EXPECT(!strcmp(kb_text(), "x"), "Backspace and Delete erase the last character: %s", kb_text());
+    EXPECT(!strcmp(kb_text(), "x"), "Backspace erases before the caret, Delete after it: %s", kb_text());
     CTRL('u');
     EXPECT(!strcmp(kb_text(), ""), "Ctrl+U = CLEAR: %s", kb_text());
     CHR('Z');
@@ -1435,6 +1477,45 @@ static void keyboard_keys(void)
     l5_keyboard(&o, text_cb, NULL);
     KEY(ESC);
     EXPECT(!strcmp(s_text, "-") && !layer_n(), "Esc = CANCEL (%s)", s_text);
+
+    /* editing as on a computer: the caret, words, Polish letters, copy / cut / paste */
+    l5_keyboard(&o, text_cb, NULL);
+    CTRL('u');
+    CHR('a');
+    CHR('b');
+    CHR('c');
+    KEY(LEFT);
+    KEY(LEFT);
+    CHR('X');
+    EXPECT(!strcmp(kb_text(), "aXbc"), "a character goes in at the caret: %s", kb_text());
+    if (s_key_shots) shot("55_keys_caret");
+    KEY(HOME);
+    KEY(DELETE);
+    KEY(END);
+    KEY(BACKSPACE);
+    EXPECT(!strcmp(kb_text(), "Xb"), "Home, Delete, End, Backspace: %s", kb_text());
+    CHR(' ');
+    CHR('d');
+    CHR('e');
+    CHR(' ');
+    CHR('f');
+    CTRLK(BACKSPACE);
+    EXPECT(!strcmp(kb_text(), "Xb de "), "Ctrl+Backspace erases a word: %s", kb_text());
+    CTRLK(LEFT);
+    CTRLK(DELETE);
+    EXPECT(!strcmp(kb_text(), "Xb "), "Ctrl+Left, Ctrl+Delete erase the word after the caret: %s", kb_text());
+    type_uc(0x105);
+    type_uc(0x17B);
+    EXPECT(!strcmp(kb_text(), "Xb \xC4\x85\xC5\xBB"), "Polish letters: %s", kb_text());
+    CTRL('c');
+    CTRL('u');
+    CTRL('v');
+    CTRL('v');
+    EXPECT(!strcmp(kb_text(), "Xb \xC4\x85\xC5\xBBXb \xC4\x85\xC5\xBB"), "Ctrl+C, Ctrl+V twice: %s", kb_text());
+    CTRL('x');
+    EXPECT(!strcmp(kb_text(), ""), "Ctrl+X cuts the text: %s", kb_text());
+    KEY(ESC);
+    close_all();
     l5_keyboard(&o, text_cb, NULL);
     lv_obj_send_event(lv_obj_get_child(lv_obj_get_child(kb_panel(), 0), 1), LV_EVENT_CLICKED, NULL); /* a tap on the field */
     EXPECT(!kb_compact(), "a tap on the field brings the on-screen keys");
@@ -1607,6 +1688,103 @@ static void sd_keys(void)
     EXPECT(layer_n() == 1, "SD: Ctrl+R = RENAME");
     KEY(ESC);
     EXPECT(!layer_n() && on_card("keys"), "SD: Esc leaves the name");
+    FKEY(2);
+    EXPECT(layer_n() == 1, "SD: F2 = RENAME");
+    KEY(ESC);
+
+    /* typing finds a name: letters typed quickly add up, the same letter again goes to the next one */
+    sd_open(CARD, NULL);
+    CHR('l');
+    EXPECT(!strcmp(sd_sel(), "logs"), "SD: l finds logs (%s)", sd_sel());
+    CHR('o');
+    CHR('n');
+    EXPECT(!strcmp(sd_sel(), "long.txt"), "SD: lon finds long.txt (%s)", sd_sel());
+    settle(1100);
+    CHR('l');
+    EXPECT(!strcmp(sd_sel(), "logs"), "SD: l after a second goes round to logs (%s)", sd_sel());
+    CHR('l');
+    EXPECT(!strcmp(sd_sel(), "long.txt"), "SD: l again = the next name with l (%s)", sd_sel());
+    settle(1100);
+    CHR('l');
+    type_key(L5_KEY_CHAR, 'L', false, true, false);
+    EXPECT(!strcmp(sd_sel(), "long.txt"), "SD: l, then L = the same letter again (%s)", sd_sel());
+    settle(1100);
+    CHR('z');
+    EXPECT(!strncmp(sd_sel(), "Zdj", 3), "SD: z finds Zdjecia, letter case ignored (%s)", sd_sel());
+    settle(1100);
+
+    /* Ctrl+X, Ctrl+V moves; config.conf is not cut */
+    sd_open(CARD, "long.txt");
+    CTRL('x');
+    EXPECT(l5_sd_clip_cut(), "SD: Ctrl+X = CUT");
+    sd_open(CARD "/logs", NULL);
+    CTRL('v');
+    settle(100);
+    EXPECT(on_card("logs/long.txt") && !on_card("long.txt") && !l5_sd_clip_name(),
+           "SD: Ctrl+V after CUT moves the file and empties the clipboard");
+    sd_open(CARD "/logs", "long.txt");
+    CTRL('x');
+    sd_open(CARD, NULL);
+    CTRL('v');
+    settle(100);
+    EXPECT(on_card("long.txt") && !on_card("logs/long.txt"), "SD: moved back");
+    sd_open(CARD, "config.conf");
+    CTRL('x');
+    EXPECT(!l5_sd_clip_name(), "SD: config.conf is not cut");
+    close_all();
+}
+
+/* l5_kbd_map.c: HID events of the Tab5 Keyboard as keys (Polish letters, F-keys, what repeats) */
+static void kbd_map_keys(void)
+{
+    l5_key_t k;
+    EXPECT(l5_kbd_map(0x40, 0x04, &k) && l5_key_char(&k) == 0x105 && !k.alt, "map: right Alt + a = a with ogonek");
+    EXPECT(l5_kbd_map(0x42, 0x1D, &k) && l5_key_char(&k) == 0x17B, "map: right Alt + Shift + z = Z with a dot");
+    EXPECT(l5_kbd_map(0x04, 0x12, &k) && l5_key_char(&k) == 0xF3, "map: left Alt + o = o acute");
+    EXPECT(l5_kbd_map(0x04, 0x1E, &k) && k.alt && k.ch == '1', "map: Alt + 1 stays Alt+1");
+    EXPECT(l5_kbd_map(0x04, 0x14, &k) && k.alt && k.ch == 'q', "map: Alt + q stays a shortcut");
+    EXPECT(l5_kbd_map(0, 0x3A, &k) && k.kind == L5_KEY_F1 && l5_kbd_map(0, 0x45, &k) && k.kind == L5_KEY_F(12),
+           "map: F1 .. F12");
+    EXPECT(l5_kbd_map(0, 0x3E, &k) && !l5_kbd_repeats(&k), "map: F5 does not repeat");
+    EXPECT(l5_kbd_map(0x40, 0x04, &k) && l5_kbd_repeats(&k), "map: a Polish letter repeats like any letter");
+    EXPECT(!l5_kbd_map(0, 0x39, &k), "map: Caps Lock is not a key of the launcher");
+}
+
+/* the bootscreen: Space stops the countdown, 1..4 start the chips' apps, Enter = START NOW, Esc = LAUNCHER */
+static void boot_keys(void)
+{
+    boot_slots(4);
+    const int boots = shots_boots;
+    l5_boot_screen();
+    CHR(' ');
+    EXPECT(label_with(boot_el(), "COUNTDOWN STOPPED") != NULL, "bootscreen: Space stops the countdown");
+    CHR('2'); /* the chips: app1, app2 */
+    EXPECT(shots_boots == boots + 1 && g_slots.boot == 2, "bootscreen: 2 starts the second chip's app (boot %d)",
+           g_slots.boot);
+    g_slots.boot = 0;
+    l5_boot_screen();
+    KEY(ENTER);
+    EXPECT(shots_boots == boots + 2 && g_slots.boot == 0, "bootscreen: Enter = START NOW");
+    l5_boot_screen();
+    KEY(ESC);
+    EXPECT(!lv_obj_get_child_count(l5_ui_sys()) && l5_ui_view() == L5_VIEW_HOME, "bootscreen: Esc = LAUNCHER");
+    l5_ui_set_booted(true);
+}
+
+/* PMAN: the arrows select a partition, Enter its actions, Ctrl+S the schemes */
+static void pman_keys(void)
+{
+    l5_ui_go(L5_VIEW_PMAN);
+    KEY(DOWN);
+    KEY(ENTER);
+    EXPECT(layer_n() == 1, "PMAN: Enter = the partition's actions");
+    KEY(ESC);
+    EXPECT(!layer_n(), "PMAN: Esc closes them");
+    CTRL('s');
+    EXPECT(layer_n() == 1, "PMAN: Ctrl+S = the schemes");
+    KEY(ESC);
+    close_all();
+    ALT('1');
 }
 
 static void ota_keys(void)
@@ -1738,19 +1916,24 @@ static int keys_test(void)
     int before = s_fails;
     shots_kbd_present = true;
     l5_ui_set_booted(true);
+    kbd_map_keys();
     global_keys();
+    global_keys2();
     dialog_keys();
     keyboard_keys();
     home_keys();
     sd_keys();
     ota_keys();
+    pman_keys();
     cfg_keys();
     charge_keys();
+    boot_keys();
     close_all();
     shots_kbd_present = false;
     int fails = s_fails - before;
-    printf(fails ? "keys: FAILED %d\n" : "keys: tabs, wake, dialogs, menus, VIEW, progress, text field, HOME, SD, OTA, "
-           "CFG, Charge Mode PASSED\n", fails);
+    printf(fails ? "keys: FAILED %d\n" : "keys: tabs, Alt+1..5, F1, F5, wake, dialogs, menus, VIEW, progress, text field "
+           "with caret and Polish letters, HOME, SD (find, F2, cut), OTA, PMAN, CFG, Charge Mode, bootscreen PASSED\n",
+           fails);
     return fails ? 1 : 0;
 }
 

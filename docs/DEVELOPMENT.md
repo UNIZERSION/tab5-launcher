@@ -554,6 +554,36 @@ Measurement of the card's parts (render in ms, two runs of 3 frames per variant;
   STORAGE now (DISPLAY ends in Idle clock). Snapshots 83-88: HOME, bootscreen and CFG with APP, the idle clock,
   HOME and bootscreen in Daylight.
 
+### Keyboard shortcuts as on a computer (2026-10-27, not flashed)
+
+- **Key map** (`main/l5_kbd_map.c`, out of `l5_kbd.c` so the PC tests run it): F1..F12 (HID 0x3A..0x45) are
+  `L5_KEY_F1` + n; Alt (right = AltGr, or left) + a c e l n o s x z gives the Polish letters in `l5_key_t.uc`
+  (`ch` 0, Alt and Ctrl cleared: they type and repeat like any letter); `l5_key_char()` = `uc` or `ch`. The F-keys
+  do not repeat.
+- **Everywhere** (`l5_keys.c`): Alt+1..5 = `l5_ui_go` in the rail's order, F1 or `?` = `l5_keys_help()` (the text
+  viewer: everywhere, the tab's block, text fields, bootscreen; in a buffer of the text's own length, freed with the
+  dialog), F5 = `l5_ui_go(l5_ui_view())` (the tab again).
+- **Text field** (`l5_keyboard.c`): a caret (`pos`, a byte index on a character boundary) with `tx` before and
+  `tx2` after it; too long, the part next to the caret is shown with "..." on the cut sides (the text after it
+  keeps a third of the field). Insert / erase at the caret, Ctrl+Left / Right and Ctrl+Backspace / Delete by words
+  (spaces end them), Delete erases after the caret now, Ctrl+C / X / V with one text clipboard of 256 bytes (not
+  for masked fields), F1 the shortcuts.
+- **SD**: typing finds a name (`find_typed`, `l5_files_starts_with()`: FatFs case folding; letters less than
+  1 s apart add up, the same letter again, in either case, goes to the next match; UTF-8 from `l5_files_utf8()`,
+  which the text field uses too), F2 = RENAME, Ctrl+X = CUT: the clipboard keeps
+  `cut`, PASTE then `rename()`s the entry into the open folder (no copy; a free name if taken), "CUT: name" in
+  the foot; config.conf is not cut.
+- **PMAN** (`l5_pman_key`): Up / Down / Left / Right, Home / End select a row (`select_index`: as a tap); Enter =
+  a menu of the side pane's actions that are enabled (`row_actions()`, shared with `side_pane`), F2 RESIZE, Delete
+  DELETE, Ctrl+S / O / A / K = scheme, OPTIMIZE FLASH, AUTO PARTITION, SANITY CHECK.
+- **Bootscreen** (`l5_boot_screen_key`): Enter = START NOW, Space = stop (as a tap), 1..4 = the chips, the rest =
+  LAUNCHER as before.
+- **Tests:** `shots --keys`: the key map (Polish letters with right / left Alt and Shift, Alt+1 and Alt+q stay
+  shortcuts, F1..F12, what repeats, Caps Lock unused), Alt+1/2/4/5, F1, ?, F5, the text field (insert at the caret,
+  Home / Delete / End / Backspace, Ctrl+Backspace, Ctrl+Left + Ctrl+Delete, Polish letters, Ctrl+C / V / X), SD
+  (typing l, lon, l again, z; F2; Ctrl+X + Ctrl+V moves and back; config.conf not cut), PMAN (Enter menu,
+  Ctrl+S), bootscreen (Space, 2, Enter, Esc). Snapshots 54 (F1 in SD) and 55 (the caret in the middle).
+
 ## SD card: FAT32, exFAT, long names
 
 - **FAT32 and exFAT.** IDF 5.5.2 has `FF_FS_EXFAT 0` hard-coded in FatFs and offers no Kconfig option for it.
@@ -1315,6 +1345,7 @@ Port of `L5.connect`, `L5.pickWifi` and `L5.wifiMenu` (app.js) in `main/ui/l5_wi
 | + app icons and `about.txt` from the card, lodepng without encoder and error texts with `-Os` | 1,932,848 B (0x1D7E30) | 160 KB (8%) |
 | + review fixes: one icon worker, retries after running out of memory, 16-bit PNGs refused, Polish capitals (not flashed) | 1,933,552 B (0x1D80F0) | 160 KB (8%) |
 | + colours from the app icons (tints, APP accent kept in NVS), idle clock with the launcher hidden under it (not flashed) | 1,938,624 B (0x1D94C0) | 155 KB (8%) |
+| + keyboard shortcuts as on a computer: Alt+1..5, F1 help, F2, F5, text cursor, Polish letters with Alt, SD find / cut, PMAN keys, bootscreen keys (not flashed) | 1,943,568 B (0x1DA810) | 150 KB (7%) |
 
 The Wi-Fi stack and OTA fit in the 2 MB partition: the launcher, `L5_POOL_START` and the fixed areas do not
 change, and the launcher partition did not have to be enlarged. The largest parts: host esp_hosted 2.12.6
@@ -1399,6 +1430,7 @@ the default settings at once (the scheme stays), and a new file is created on th
 | `main/l5_board.c` | display start, backlight, SD, RTC RX8130, INA226 battery (voltage, pack current and state: charging / battery / USB not charging), charger (CHG_EN), power-off, ESP32-C6 power |
 | `main/l5_pi4io.h` | registers of the second expander (PI4IOE5V6408 0x44) and the charger enable steps, shared by the firmware and the PC test |
 | `main/l5_kbd.c` | M5Stack Tab5 Keyboard on the side port (not in the prototype, which has `keydown`): own I2C bus, HID events turned into keys with auto-repeat |
+| `main/l5_kbd_map.c` | the HID events as launcher keys: US layout, F1..F12, Polish letters with Alt; what repeats (the PC tests run it) |
 | `main/ui/l5_keys.c` | the keys in the UI: waking, tab switching, the topmost dialog / menu / text field, the system screen or the visible tab (not in the prototype) |
 | `main/ui/l5_dither.c` | ordered dithering of the vertical gradients for the RGB565 panel: strips cached in PSRAM (not in the prototype) |
 | `main/l5_wifi.c` | `R.wifi`, `S.savedWifi`, Wi-Fi in `L5.start`: ESP32-C6 over ESP-Hosted, scan, connecting, saved networks in NVS |

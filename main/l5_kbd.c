@@ -107,9 +107,6 @@ static bool probe(uint8_t *fw, uint8_t *mode)
     return ok;
 }
 
-static const char NUM[] = "1234567890", NUM_S[] = "!@#$%^&*()";
-static const char SYM[] = "-=[]\\#;'`,./", SYM_S[] = "_+{}|~:\"~<>?"; /* usage IDs 0x2D..0x38 */
-
 /* one HID event: modifier byte (bits 0/4 Ctrl, 1/5 Shift, 2/6 Alt), usage ID (0 = all keys released) */
 static void event(uint8_t mod, uint8_t usage, int64_t now)
 {
@@ -117,41 +114,13 @@ static void event(uint8_t mod, uint8_t usage, int64_t now)
         s_rep.active = false;
         return;
     }
-    l5_key_t k = {.ctrl = (mod & 0x11) != 0, .shift = (mod & 0x22) != 0, .alt = (mod & 0x44) != 0};
-    if (usage >= 0x04 && usage <= 0x1D) {
-        k.kind = L5_KEY_CHAR;
-        k.ch = (char)((k.shift ? 'A' : 'a') + usage - 0x04);
-    } else if (usage >= 0x1E && usage <= 0x27) {
-        k.kind = L5_KEY_CHAR;
-        k.ch = (k.shift ? NUM_S : NUM)[usage - 0x1E];
-    } else if (usage == 0x2C) {
-        k.kind = L5_KEY_CHAR;
-        k.ch = ' ';
-    } else if (usage >= 0x2D && usage <= 0x38) {
-        k.kind = L5_KEY_CHAR;
-        k.ch = (k.shift ? SYM_S : SYM)[usage - 0x2D];
-    } else {
-        switch (usage) {
-        case 0x28: case 0x58: k.kind = L5_KEY_ENTER; break;
-        case 0x29: k.kind = L5_KEY_ESC; break;
-        case 0x2A: k.kind = L5_KEY_BACKSPACE; break;
-        case 0x2B: k.kind = L5_KEY_TAB; break;
-        case 0x4A: k.kind = L5_KEY_HOME; break;
-        case 0x4B: k.kind = L5_KEY_PGUP; break;
-        case 0x4C: k.kind = L5_KEY_DELETE; break;
-        case 0x4D: k.kind = L5_KEY_END; break;
-        case 0x4E: k.kind = L5_KEY_PGDN; break;
-        case 0x4F: k.kind = L5_KEY_RIGHT; break;
-        case 0x50: k.kind = L5_KEY_LEFT; break;
-        case 0x51: k.kind = L5_KEY_DOWN; break;
-        case 0x52: k.kind = L5_KEY_UP; break;
-        default: s_rep.active = false; return; /* F-keys, Caps Lock...: nothing in the launcher */
-        }
+    l5_key_t k;
+    if (!l5_kbd_map(mod, usage, &k)) { /* l5_kbd_map.c */
+        s_rep.active = false;
+        return;
     }
     push(&k);
-    /* held keys repeat: characters, Backspace, Delete, arrows, Home/End, PgUp/PgDn; not Enter, Esc, Tab, shortcuts */
-    bool repeats = !k.ctrl && !k.alt &&
-                   (k.kind == L5_KEY_CHAR || k.kind == L5_KEY_BACKSPACE || k.kind == L5_KEY_DELETE || k.kind > L5_KEY_TAB);
+    const bool repeats = l5_kbd_repeats(&k);
     s_rep.key = k;
     s_rep.key.repeat = true;
     s_rep.active = repeats;

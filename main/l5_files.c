@@ -164,13 +164,18 @@ static size_t prefix_folded(const char *a, const char *b)
     return (size_t)(x - (const uint8_t *)a);
 }
 
+bool l5_files_starts_with(const char *name, const char *prefix)
+{
+    return !*prefix || prefix_folded(name, prefix) > 0;
+}
+
 bool l5_files_same_name(const char *a, const char *b)
 {
     size_t n = prefix_folded(a, b);
     return (n || !*b) && a[n] == 0;
 }
 
-static size_t utf8_put(char *out, uint32_t c)
+size_t l5_files_utf8(char *out, uint32_t c)
 {
     if (c < 0x80) {
         out[0] = (char)c;
@@ -205,7 +210,7 @@ void l5_files_upper(char *dst, size_t size, const char *src)
         char b[4];
         size_t k = 1;
         if (c < 0) b[0] = (char)*at; /* a broken byte stays as it is */
-        else k = utf8_put(b, fold((uint32_t)c));
+        else k = l5_files_utf8(b, fold((uint32_t)c));
         if (n + k >= size) break; /* whole characters only */
         memcpy(dst + n, b, k);
         n += k;

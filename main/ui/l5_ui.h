@@ -44,10 +44,12 @@ int l5_ui_dim_level(int bright, bool clock); /* the dimmed backlight %: with the
 /* ---------- keyboard keys (l5_keys.c): the M5Stack Tab5 Keyboard in the whole UI ---------- */
 void l5_keys_init(void);         /* after l5_ui_init: a 20 ms timer takes the keys and sends them on */
 uint32_t l5_key_event(void);     /* LVGL event code of a key sent to a dialog; lv_event_get_param() is the l5_key_t */
+void l5_keys_help(void);         /* F1 / ?: the shortcuts of the visible tab, text fields and the bootscreen */
 /* the visible tab's keys; true when the key did something */
 bool l5_home_key(const l5_key_t *k);
 bool l5_sd_key(const l5_key_t *k);
 bool l5_ota_key(const l5_key_t *k);
+bool l5_pman_key(const l5_key_t *k);
 bool l5_cfg_key(const l5_key_t *k);
 bool l5_sys_key(const l5_key_t *k); /* a system screen is up (l5_sys.c) */
 

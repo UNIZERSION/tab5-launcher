@@ -261,7 +261,7 @@ void l5_sd_paint_clip(void)
     }
     if (R.clip_label) {
         if (clip) {
-            lv_label_set_text_fmt(R.clip_label, "CLIPBOARD: %s", clip);
+            lv_label_set_text_fmt(R.clip_label, l5_sd_clip_cut() ? "CUT: %s" : "CLIPBOARD: %s", clip);
         } else {
             lv_label_set_text(R.clip_label, R.listed > R.n ? "" : "TAP A FOLDER TO OPEN \xC2\xB7 TAP A FILE TO SELECT");
         }
@@ -843,9 +843,47 @@ static void no_card(lv_obj_t *m, lv_obj_t *s)
               "Firmware .bin files on a FAT32 or exFAT card show up here and install into a flash slot.");
 }
 
-/* keys of the Tab5 Keyboard (l5_keys.c): Up / Down, Home / End, PgUp / PgDn by 8 rows move the selection; Enter
-   opens a folder, installs the .bin the side panel offers, views a text file; Esc / Backspace = UP, Delete = DELETE,
-   Ctrl+C COPY, Ctrl+V PASTE, Ctrl+R RENAME, Ctrl+N NEW FOLDER */
+/* Typing finds a name, as in a file manager: the characters typed less than a second apart make the beginning of a
+   name (letter case ignored); the same character again (in either case) goes to the next name with it. */
+static struct {
+    char text[64];
+    char first[5]; /* the first character typed */
+    bool same;     /* every character typed since is that one ("bbb", "bB") */
+    uint32_t at;
+} s_find;
+
+static bool find_typed(uint32_t c)
+{
+    char u[5] = {0};
+    l5_files_utf8(u, c);
+    if (lv_tick_elaps(s_find.at) > 1000) s_find.text[0] = 0;
+    s_find.at = lv_tick_get();
+    const size_t n = strlen(s_find.text), un = strlen(u);
+    if (n + un < sizeof(s_find.text)) memcpy(s_find.text + n, u, un + 1);
+    if (n == 0) {
+        memcpy(s_find.first, u, sizeof(u));
+        s_find.same = false;
+    } else {
+        s_find.same = (n == strlen(s_find.first) || s_find.same) && l5_files_same_name(u, s_find.first);
+    }
+    const bool same = s_find.same;
+    const char *prefix = same ? s_find.first : s_find.text;
+    const int cur = find(R.sel);
+    /* a new search or the same letter again: from the row after the selection; more letters: from the selection */
+    const int start = n == 0 || same ? cur + 1 : cur < 0 ? 0 : cur;
+    for (int k = 0; k < R.n; k++) {
+        const int i = (start + k) % R.n;
+        if (l5_files_starts_with(R.e[i].name, prefix)) {
+            if (i != cur) select_row(i);
+            break;
+        }
+    }
+    return true;
+}
+
+/* keys of the Tab5 Keyboard (l5_keys.c): Up / Down, Home / End, PgUp / PgDn by 8 rows move the selection; typing
+   finds a name; Enter opens a folder, installs the .bin the side panel offers, views a text file; Esc / Backspace =
+   UP, Delete = DELETE, Ctrl+C COPY, Ctrl+X CUT, Ctrl+V PASTE, F2 / Ctrl+R RENAME, Ctrl+N NEW FOLDER */
 bool l5_sd_key(const l5_key_t *k)
 {
     if (!R.list) {
@@ -862,6 +900,7 @@ bool l5_sd_key(const l5_key_t *k)
     case L5_KEY_ESC:
     case L5_KEY_BACKSPACE: up_cb(NULL); return true;
     case L5_KEY_DELETE: l5_sd_action("delete"); return true;
+    case L5_KEY_F(2): l5_sd_action("rename"); return true;
     case L5_KEY_ENTER: {
         if (i < 0) {
             return false;
@@ -881,10 +920,11 @@ bool l5_sd_key(const l5_key_t *k)
     }
     case L5_KEY_CHAR:
         if (!k->ctrl) {
-            return false;
+            return !k->alt && R.n > 0 && find_typed(l5_key_char(k));
         }
         switch (k->ch | 0x20) {
         case 'c': l5_sd_action("copy"); return true;
+        case 'x': l5_sd_action("cut"); return true;
         case 'v': l5_sd_action("paste"); return true;
         case 'r': l5_sd_action("rename"); return true;
         case 'n': l5_sd_action("mkdir"); return true;

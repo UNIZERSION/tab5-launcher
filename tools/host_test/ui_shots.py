@@ -28,7 +28,7 @@ MAIN = os.path.join(lvgl_host.PROJECT, 'main')
 UI_FILES = ['ui/l5_theme.c', 'ui/l5_widgets.c', 'ui/l5_dialogs.c', 'ui/l5_cover.c', 'ui/l5_keyboard.c', 'ui/l5_sd.c',
             'ui/l5_sd_ops.c', 'ui/l5_rail.c', 'ui/l5_ui.c', 'ui/l5_home.c', 'ui/l5_views.c', 'ui/l5_cfg.c',
             'ui/l5_pman.c', 'ui/l5_ota.c', 'ui/l5_charge.c', 'ui/l5_keys.c', 'ui/l5_dither.c', 'ui/l5_boot.c',
-            'ui/l5_appicon.c', 'l5_files.c']
+            'ui/l5_appicon.c', 'l5_files.c', 'l5_kbd_map.c']
 
 
 def ppm_to_png(ppm, png):
