@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "lvgl.h"
+#include "src/draw/lv_image_decoder_private.h" /* lv_image_decoder_t.name */
 #include "l5_board.h"
 #include "l5_config.h"
 #include "l5_files.h"
@@ -1300,6 +1301,13 @@ static void wall_shots(void)
 static int wall_test(void)
 {
     int before = s_fails, px[3];
+    /* LVGL's own TJpgDec decoder is gone (l5_ui_init): on the Tab5 its 4 KB stack frame for every image drawn
+       overflowed the main task's stack in the first frame */
+    bool tjpgd = false;
+    for (lv_image_decoder_t *d = lv_image_decoder_get_next(NULL); d; d = lv_image_decoder_get_next(d)) {
+        tjpgd |= d->name && !strcmp(d->name, "TJPGD");
+    }
+    EXPECT(!tjpgd, "wallpaper: LVGL's TJPGD image decoder is still registered");
     mkdir(CARD, 0777);
     icon_slots();
     l5_ui_go(L5_VIEW_HOME);

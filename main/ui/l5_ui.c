@@ -270,6 +270,12 @@ void l5_ui_set_booted(bool booted)
 
 void l5_ui_init(void)
 {
+#if LV_USE_TJPGD
+    /* l5_appicon.c calls TJpgDec itself for the wallpaper. LVGL's own TJpgDec decoder is not needed, and LVGL asks
+       it about every image it draws: its info function puts a 4 KB work area on the stack, which overflowed the
+       main task's 8 KB stack during the first frame on the Tab5 (Stack protection fault, boot loop). */
+    lv_tjpgd_deinit();
+#endif
     lv_obj_t *scr = lv_screen_active();
     lv_obj_remove_style_all(scr);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
