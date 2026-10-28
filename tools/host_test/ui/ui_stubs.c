@@ -95,7 +95,7 @@ bool l5_install_busy(void) { return false; }
 /* top bar */
 const esp_app_desc_t *esp_app_get_description(void)
 {
-    static esp_app_desc_t d = {.version = "0.1.0", .project_name = "tab5_launcher"};
+    static esp_app_desc_t d = {.version = "0.2.0", .project_name = "tab5_launcher"};
     return &d;
 }
 void l5_wifi_get_status(l5_wifi_status_t *st)

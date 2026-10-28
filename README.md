@@ -8,7 +8,7 @@ An M5Launcher-style app launcher for the M5Stack Tab5 (ESP32-P4). It installs ap
 
 ## What's new
 
-New since the 0.1.0 release (October 2026). It is in the source code here; the binaries come with the next release.
+Version 0.2.0 (28.10.2026), new since 0.1.0:
 
 - **New look:** a boot screen with a countdown ring, a side menu, and the apps in flash as a swipeable HOME carousel.
 - **Three themes:** Graphite, Midnight and Daylight, switched at once in CFG.
@@ -18,6 +18,7 @@ New since the 0.1.0 release (October 2026). It is in the source code here; the b
 - **Wallpaper from the SD card:** `wallpaper.jpg` or `wallpaper.png` behind the boot screen, HOME and the idle clock.
 - **Idle clock:** a large clock with the date and the battery on the dimmed screen.
 - **Keyboard shortcuts** made for the M5Stack Tab5 Keyboard (it has no F-keys): 1…5 for the tabs, ? or Ctrl+H for help, Ctrl+R rename, Ctrl+↑ / ↓ a page, Ctrl+C / X / V, text editing with a cursor, Polish letters with Alt, type-to-find in the SD tab.
+- **Files over the USB cable:** `tools/sd_put.py` copies files to the SD card in the Tab5 while the launcher runs, no card reader needed.
 
 | | |
 |---|---|
@@ -68,7 +69,11 @@ Details, sizes and formats: [App icons](docs/GUIDE.md#app-icons-from-the-sd-card
 
 Replace `COM4` with your Tab5's port. Flashing replaces the current firmware and partition table and erases NVS. Full user guide: [docs/GUIDE.md](docs/GUIDE.md).
 
-The 0.1.0 release does not have the features under [What's new](#whats-new) yet: to try them now, build the launcher from source (below). They pass the PC tests, but most of them have not been tested on a Tab5 yet ([list](docs/GUIDE.md#limitations-and-plans)).
+Already running the launcher (0.1.0 too)? Update only the launcher and keep the installed apps, the Wi-Fi networks and the settings:
+
+```
+python -m esptool --chip esp32p4 -p COM4 write_flash 0x10000 tab5-launcher-update-0x10000.bin
+```
 
 ## Requirements
 

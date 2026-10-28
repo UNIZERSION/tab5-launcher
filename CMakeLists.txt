@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.16)
 # RESET always lands in the launcher, while a software restart boots the app that
 # the launcher selected in otadata (see README.md).
 set(IDF_TARGET "esp32p4" CACHE STRING "M5Stack Tab5 target")
-set(PROJECT_VER "0.1.0")
+set(PROJECT_VER "0.2.0")
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/exfat.cmake)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(tab5_launcher)

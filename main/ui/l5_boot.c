@@ -215,7 +215,7 @@ static lv_obj_t *row_box(lv_obj_t *parent, int32_t gap)
     return r;
 }
 
-/* "TAB5 LAUNCHER · v0.1.0" on the left, the clock and the battery on the right */
+/* "TAB5 LAUNCHER · v0.2.0" on the left, the clock and the battery on the right */
 static void corners(lv_obj_t *el)
 {
     char t[64];
